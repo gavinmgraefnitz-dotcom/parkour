@@ -18,15 +18,29 @@ scene.add(light);
 
 // === PHYSICS WORLD ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
-const material = new CANNON.Material("default");
-const contact = new CANNON.ContactMaterial(material, material, { friction: 0.4, restitution: 0 });
+
+// Materials (very low friction so we don’t “stick”)
+const slipperyMaterial = new CANNON.Material("slippery");
+const contact = new CANNON.ContactMaterial(slipperyMaterial, slipperyMaterial, {
+  friction: 0.0, // 🔥 remove ground friction
+  restitution: 0.0,
+});
 world.defaultContactMaterial = contact;
 
 // === GROUND ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: groundShape, position: new CANNON.Vec3(0, -0.5, 0), material });
+const groundBody = new CANNON.Body({
+  type: CANNON.Body.STATIC,
+  shape: groundShape,
+  position: new CANNON.Vec3(0, -0.5, 0),
+  material: slipperyMaterial,
+});
 world.addBody(groundBody);
-const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 20), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+
+const groundMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(20, 1, 20),
+  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+);
 scene.add(groundMesh);
 
 // === PLATFORMS ===
@@ -34,11 +48,19 @@ const platforms = [];
 const platformBodies = [];
 function createPlatform(x, y, z) {
   const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape,
+    position: new CANNON.Vec3(x, y, z),
+    material: slipperyMaterial,
+  });
   world.addBody(body);
   platformBodies.push(body);
 
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 1, 4),
+    new THREE.MeshStandardMaterial({ color: 0x0000ff })
+  );
   mesh.position.copy(body.position);
   scene.add(mesh);
   platforms.push(mesh);
@@ -56,7 +78,7 @@ const playerBody = new CANNON.Body({
   mass: 1,
   shape: playerShape,
   position: new CANNON.Vec3(0, 2, 0),
-  material,
+  material: slipperyMaterial,
 });
 playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
@@ -86,11 +108,10 @@ window.addEventListener("keyup", (e) => {
 });
 
 // === MOVEMENT SETTINGS ===
-const moveAccelGround = 120;   // strong push when on ground
-const moveAccelAir = 40;       // weaker control in air
-const maxSpeed = 12;           // top speed
-const damping = 0.1;
+const moveSpeed = 10;   // 🔥 Faster running
+const airSpeed = 8;     // Good control mid-air
 const jumpSpeed = 9;
+const damping = 0.1;
 
 // === GAME LOOP ===
 const clock = new THREE.Clock();
@@ -108,34 +129,33 @@ function animate() {
   if (keys.d) moveDir.x += 1;
   if (moveDir.length() > 0) moveDir.normalize();
 
-  // ground detection via raycast
+  // Check if grounded
   const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0, -1, 0));
   const result = new CANNON.RaycastResult();
   ray.intersectWorld(world, { skipBackfaces: true }, result);
   const onGround = result.hasHit && result.distance <= 1.1;
 
-  const accel = onGround ? moveAccelGround : moveAccelAir;
+  // Apply velocity directly instead of impulses
+  const desiredSpeed = onGround ? moveSpeed : airSpeed;
+  const targetVel = moveDir.scale(desiredSpeed);
+  playerBody.velocity.x = targetVel.x;
+  playerBody.velocity.z = targetVel.z;
 
-  if (moveDir.length() > 0) {
-    const targetVel = moveDir.scale(maxSpeed);
-    const diff = targetVel.vsub(playerBody.velocity);
-    diff.y = 0;
-    const impulse = diff.scale(accel * delta);
-    playerBody.applyImpulse(impulse, playerBody.position);
-  } else {
-    playerBody.velocity.x *= 1 - damping;
-    playerBody.velocity.z *= 1 - damping;
-  }
-
-  // jump
+  // Jump
   if (keys.jump && onGround) {
     playerBody.velocity.y = jumpSpeed;
   }
   keys.jump = false;
 
-  // === CAMERA ===
+  // Apply slight drag
+  if (onGround && moveDir.length() === 0) {
+    playerBody.velocity.x *= 1 - damping;
+    playerBody.velocity.z *= 1 - damping;
+  }
+
+  // === CAMERA FOLLOW ===
   const camTarget = new THREE.Vector3().copy(playerBody.position);
-  const desiredOffset = new THREE.Vector3(0, 5, 10);
+  const desiredOffset = new THREE.Vector3(0, 4, 10);
   const desiredPos = camTarget.clone().add(desiredOffset);
   camera.position.lerp(desiredPos, delta * 4);
   camera.lookAt(camTarget);

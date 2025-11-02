@@ -23,10 +23,7 @@ world.broadphase = new CANNON.NaiveBroadphase();
 world.allowSleep = true;
 
 const material = new CANNON.Material();
-const contact = new CANNON.ContactMaterial(material, material, {
-  friction: 0,
-  restitution: 0,
-});
+const contact = new CANNON.ContactMaterial(material, material, { friction: 0, restitution: 0 });
 world.addContactMaterial(contact);
 world.defaultContactMaterial = contact;
 
@@ -49,17 +46,9 @@ scene.add(groundMesh);
 // === PLATFORMS ===
 function makePlatform(x, y, z) {
   const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape,
-    position: new CANNON.Vec3(x, y, z),
-    material,
-  });
+  const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
   world.addBody(body);
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(4, 1, 4),
-    new THREE.MeshStandardMaterial({ color: 0x0000ff })
-  );
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
   mesh.position.copy(body.position);
   scene.add(mesh);
   return { mesh, body };
@@ -75,31 +64,19 @@ const platforms = [
 
 // === PLAYER ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-const playerBody = new CANNON.Body({
-  mass: 1,
-  shape: playerShape,
-  position: new CANNON.Vec3(0, 2, 0),
-  material,
-});
+const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, position: new CANNON.Vec3(0, 2, 0), material });
 playerBody.fixedRotation = true;
 world.addBody(playerBody);
 
-const playerMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 2, 1),
-  new THREE.MeshStandardMaterial({ color: 0xff0000 })
-);
+const playerMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
 scene.add(playerMesh);
 
-// === DEBUG SPHERE FOR GROUND CHECK ===
+// === DEBUG SPHERE ===
 const groundCheckMesh = new THREE.Mesh(
   new THREE.SphereGeometry(0.3, 16, 16),
   new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
 );
 scene.add(groundCheckMesh);
-
-// Inside animate() - update sphere position
-groundCheckMesh.position.copy(playerBody.position);
-groundCheckMesh.position.y = playerBody.position.y - 1.1; // slightly below player
 
 // === CONTROLS ===
 const keys = { w: false, a: false, s: false, d: false, jump: false };
@@ -124,23 +101,24 @@ const airSpeed = 8;
 const jumpSpeed = 9;
 const damping = 0.1;
 
-// === GROUND DETECTION (broadphase contact check) ===
+// === GROUND DETECTION ===
 function isGrounded() {
+  const playerBottomY = playerBody.position.y - 1; // half player height
+  const epsilon = 0.15; // small buffer
   let grounded = false;
-  const threshold = 1.05; // player half-height + offset
+
   world.contacts.forEach((c) => {
     if (c.bi === playerBody || c.bj === playerBody) {
       const contactNormal = c.ni.clone();
       if (c.bi === playerBody) contactNormal.negate(contactNormal);
       if (contactNormal.y > 0.5) {
-        const contactPoint = c.rj
-          ? c.bj.position.vadd(c.rj)
-          : c.bi.position.vadd(c.ri);
-        const dist = playerBody.position.y - contactPoint.y;
-        if (dist < threshold) grounded = true;
+        const contactPoint = c.bi === playerBody ? c.rj.vadd(c.bj.position) : c.ri.vadd(c.bi.position);
+        const dist = playerBottomY - contactPoint.y;
+        if (dist <= epsilon) grounded = true;
       }
     }
   });
+
   return grounded;
 }
 
@@ -154,8 +132,9 @@ function animate() {
 
   const grounded = isGrounded();
 
-  // Debug indicator
-  groundCheckMesh.position.copy(playerBody.position).y -= 1.1;
+  // Debug sphere
+  groundCheckMesh.position.copy(playerBody.position);
+  groundCheckMesh.position.y = playerBody.position.y - 1.1;
   groundCheckMesh.material.color.set(grounded ? 0x00ff00 : 0xff0000);
 
   // === MOVEMENT ===
@@ -177,7 +156,7 @@ function animate() {
   }
   keys.jump = false;
 
-  // Apply drag when no movement keys
+  // Apply damping when no movement keys
   if (grounded && moveDir.length() === 0) {
     playerBody.velocity.x *= 1 - damping;
     playerBody.velocity.z *= 1 - damping;

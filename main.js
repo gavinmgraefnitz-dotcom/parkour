@@ -1,16 +1,11 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
 import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
-// === SCENE SETUP ===
+// === SCENE ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 5, 10);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -21,54 +16,29 @@ const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 20, 10);
 scene.add(light);
 
-// === CANNON WORLD ===
-const world = new CANNON.World({
-  gravity: new CANNON.Vec3(0, -9.82, 0),
-});
-
+// === PHYSICS WORLD ===
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
 const material = new CANNON.Material("default");
-const contact = new CANNON.ContactMaterial(material, material, {
-  friction: 0.3,
-  restitution: 0.0,
-});
+const contact = new CANNON.ContactMaterial(material, material, { friction: 0.4, restitution: 0 });
 world.defaultContactMaterial = contact;
 
 // === GROUND ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-const groundBody = new CANNON.Body({
-  type: CANNON.Body.STATIC,
-  shape: groundShape,
-  position: new CANNON.Vec3(0, -0.5, 0),
-  material,
-});
+const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: groundShape, position: new CANNON.Vec3(0, -0.5, 0), material });
 world.addBody(groundBody);
-
-const groundMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(20, 1, 20),
-  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
-);
-groundMesh.position.copy(groundBody.position);
+const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 20), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
 scene.add(groundMesh);
 
 // === PLATFORMS ===
 const platforms = [];
 const platformBodies = [];
-
 function createPlatform(x, y, z) {
   const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape,
-    position: new CANNON.Vec3(x, y, z),
-    material,
-  });
+  const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
   world.addBody(body);
   platformBodies.push(body);
 
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(4, 1, 4),
-    new THREE.MeshStandardMaterial({ color: 0x0000ff })
-  );
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
   mesh.position.copy(body.position);
   scene.add(mesh);
   platforms.push(mesh);
@@ -116,66 +86,59 @@ window.addEventListener("keyup", (e) => {
 });
 
 // === MOVEMENT SETTINGS ===
-const moveSpeed = 8;
-const jumpSpeed = 7;
-const groundRayLength = 1.1;
+const moveAccelGround = 120;   // strong push when on ground
+const moveAccelAir = 40;       // weaker control in air
+const maxSpeed = 12;           // top speed
+const damping = 0.1;
+const jumpSpeed = 9;
 
 // === GAME LOOP ===
 const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
-  const delta = clock.getDelta();
+  const delta = Math.min(clock.getDelta(), 0.05);
   world.step(1 / 60, delta, 3);
 
-  // === PLAYER MOVEMENT (with acceleration + air control) ===
+  // === MOVEMENT ===
   const moveDir = new CANNON.Vec3(0, 0, 0);
   if (keys.w) moveDir.z -= 1;
   if (keys.s) moveDir.z += 1;
   if (keys.a) moveDir.x -= 1;
   if (keys.d) moveDir.x += 1;
-
   if (moveDir.length() > 0) moveDir.normalize();
 
-  // Ground detection
+  // ground detection via raycast
   const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0, -1, 0));
   const result = new CANNON.RaycastResult();
   ray.intersectWorld(world, { skipBackfaces: true }, result);
   const onGround = result.hasHit && result.distance <= 1.1;
 
-  // Movement settings
-  const groundAccel = 30;
-  const airAccel = 6;
-  const maxSpeed = 8;
-  const damping = 0.05;
-  const accel = onGround ? groundAccel : airAccel;
+  const accel = onGround ? moveAccelGround : moveAccelAir;
 
   if (moveDir.length() > 0) {
-    const targetVel = moveDir.scale(maxSpeed, new CANNON.Vec3());
+    const targetVel = moveDir.scale(maxSpeed);
     const diff = targetVel.vsub(playerBody.velocity);
     diff.y = 0;
-    const impulse = diff.scale(accel * delta, new CANNON.Vec3());
+    const impulse = diff.scale(accel * delta);
     playerBody.applyImpulse(impulse, playerBody.position);
   } else {
     playerBody.velocity.x *= 1 - damping;
     playerBody.velocity.z *= 1 - damping;
   }
 
-  // Jump
+  // jump
   if (keys.jump && onGround) {
     playerBody.velocity.y = jumpSpeed;
   }
   keys.jump = false;
 
-  // === SMOOTH CAMERA FOLLOW ===
-  const cameraTarget = new THREE.Vector3().copy(playerBody.position);
-  const desiredOffset = new THREE.Vector3(0, 4, 10);
-  const desiredPos = new THREE.Vector3()
-    .copy(playerBody.position)
-    .add(desiredOffset);
-  const smoothSpeed = 5.0;
-  camera.position.lerp(desiredPos, delta * smoothSpeed);
-  camera.lookAt(cameraTarget);
+  // === CAMERA ===
+  const camTarget = new THREE.Vector3().copy(playerBody.position);
+  const desiredOffset = new THREE.Vector3(0, 5, 10);
+  const desiredPos = camTarget.clone().add(desiredOffset);
+  camera.position.lerp(desiredPos, delta * 4);
+  camera.lookAt(camTarget);
 
   // === SYNC MESHES ===
   playerMesh.position.copy(playerBody.position);

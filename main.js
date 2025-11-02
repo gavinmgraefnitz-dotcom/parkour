@@ -1,7 +1,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
 import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
-// === THREE.JS SETUP ===
+// === SCENE SETUP ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
@@ -21,7 +21,7 @@ const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 20, 10);
 scene.add(light);
 
-// === CANNON.JS WORLD ===
+// === CANNON WORLD ===
 const world = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.82, 0),
 });
@@ -78,6 +78,7 @@ createPlatform(5, 2, 0);
 createPlatform(-5, 4, -5);
 createPlatform(0, 6, 5);
 createPlatform(10, 8, 5);
+createPlatform(-10, 10, 0);
 
 // === PLAYER ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
@@ -127,51 +128,61 @@ function animate() {
   const delta = clock.getDelta();
   world.step(1 / 60, delta, 3);
 
-  // --- PLAYER MOVEMENT ---
+  // === PLAYER MOVEMENT (with acceleration + air control) ===
   const moveDir = new CANNON.Vec3(0, 0, 0);
   if (keys.w) moveDir.z -= 1;
   if (keys.s) moveDir.z += 1;
   if (keys.a) moveDir.x -= 1;
   if (keys.d) moveDir.x += 1;
 
-  // Normalize movement
+  if (moveDir.length() > 0) moveDir.normalize();
+
+  // Ground detection
+  const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0, -1, 0));
+  const result = new CANNON.RaycastResult();
+  ray.intersectWorld(world, { skipBackfaces: true }, result);
+  const onGround = result.hasHit && result.distance <= 1.1;
+
+  // Movement settings
+  const groundAccel = 30;
+  const airAccel = 6;
+  const maxSpeed = 8;
+  const damping = 0.05;
+  const accel = onGround ? groundAccel : airAccel;
+
   if (moveDir.length() > 0) {
-    moveDir.normalize();
-    moveDir.scale(moveSpeed, moveDir);
-    playerBody.velocity.x = moveDir.x;
-    playerBody.velocity.z = moveDir.z;
+    const targetVel = moveDir.scale(maxSpeed, new CANNON.Vec3());
+    const diff = targetVel.vsub(playerBody.velocity);
+    diff.y = 0;
+    const impulse = diff.scale(accel * delta, new CANNON.Vec3());
+    playerBody.applyImpulse(impulse, playerBody.position);
   } else {
-    // friction stop
-    playerBody.velocity.x *= 0.9;
-    playerBody.velocity.z *= 0.9;
+    playerBody.velocity.x *= 1 - damping;
+    playerBody.velocity.z *= 1 - damping;
   }
 
-  // --- JUMPING ---
-  if (keys.jump) {
-    const ray = new CANNON.Ray(
-      playerBody.position,
-      new CANNON.Vec3(0, -1, 0)
-    );
-    const result = new CANNON.RaycastResult();
-    ray.intersectWorld(world, { skipBackfaces: true }, result);
-    if (result.hasHit && result.distance <= groundRayLength) {
-      playerBody.velocity.y = jumpSpeed;
-    }
-    keys.jump = false;
+  // Jump
+  if (keys.jump && onGround) {
+    playerBody.velocity.y = jumpSpeed;
   }
+  keys.jump = false;
 
-  // --- SYNC MESHES ---
+  // === SMOOTH CAMERA FOLLOW ===
+  const cameraTarget = new THREE.Vector3().copy(playerBody.position);
+  const desiredOffset = new THREE.Vector3(0, 4, 10);
+  const desiredPos = new THREE.Vector3()
+    .copy(playerBody.position)
+    .add(desiredOffset);
+  const smoothSpeed = 5.0;
+  camera.position.lerp(desiredPos, delta * smoothSpeed);
+  camera.lookAt(cameraTarget);
+
+  // === SYNC MESHES ===
   playerMesh.position.copy(playerBody.position);
   groundMesh.position.copy(groundBody.position);
   for (let i = 0; i < platforms.length; i++) {
     platforms[i].position.copy(platformBodies[i].position);
   }
-
-  // --- CAMERA FOLLOW ---
-  camera.position.x = playerBody.position.x;
-  camera.position.y = playerBody.position.y + 5;
-  camera.position.z = playerBody.position.z + 10;
-  camera.lookAt(playerBody.position);
 
   renderer.render(scene, camera);
 }

@@ -5,41 +5,42 @@ import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cann
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// === RENDERER ===
+const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // === LIGHT ===
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(10, 20, 10);
+const light = new THREE.DirectionalLight(0xffffff,1);
+light.position.set(10,20,10);
 scene.add(light);
 
 // === PHYSICS WORLD ===
-const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
 world.broadphase = new CANNON.NaiveBroadphase();
 world.allowSleep = true;
 
 const material = new CANNON.Material();
-const contact = new CANNON.ContactMaterial(material, material, { friction: 0, restitution: 0 });
+const contact = new CANNON.ContactMaterial(material, material, { friction:0, restitution:0 });
 world.addContactMaterial(contact);
 world.defaultContactMaterial = contact;
 
 // === GROUND ===
-const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: groundShape, position: new CANNON.Vec3(0, -0.5, 0), material });
+const groundShape = new CANNON.Box(new CANNON.Vec3(10,0.5,10));
+const groundBody = new CANNON.Body({ type:CANNON.Body.STATIC, shape:groundShape, position:new CANNON.Vec3(0,-0.5,0), material });
 world.addBody(groundBody);
 
-const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20,1,20), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20,1,20), new THREE.MeshStandardMaterial({ color:0x00ff00 }));
 scene.add(groundMesh);
 
 // === PLATFORMS ===
 function makePlatform(x,y,z){
     const shape = new CANNON.Box(new CANNON.Vec3(2,0.5,2));
-    const body = new CANNON.Body({ type:CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x,y,z), material});
+    const body = new CANNON.Body({ type:CANNON.Body.STATIC, shape, position:new CANNON.Vec3(x,y,z), material });
     world.addBody(body);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(4,1,4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(4,1,4), new THREE.MeshStandardMaterial({ color:0x0000ff }));
     mesh.position.copy(body.position);
     scene.add(mesh);
     return { mesh, body };
@@ -59,16 +60,11 @@ const playerBody = new CANNON.Body({ mass:1, shape:playerShape, position:new CAN
 playerBody.fixedRotation = true;
 world.addBody(playerBody);
 
-// === DEBUG SPHERE ===
-const groundCheckMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3,16,16),
-    new THREE.MeshBasicMaterial({ color:0xff0000, transparent:true, opacity:0.5 })
-);
-scene.add(groundCheckMesh);
+// Hide player mesh, first-person view doesn't need body visible
 
 // === PLAYER HANDS ===
 const handsGroup = new THREE.Group();
-camera.add(handsGroup); // Attach hands to camera
+camera.add(handsGroup); // attach to camera
 
 const leftHand = new THREE.Mesh(
     new THREE.BoxGeometry(0.3,0.8,0.3),
@@ -152,11 +148,6 @@ function animate(){
 
     const grounded = isGrounded();
 
-    // Debug sphere
-    groundCheckMesh.position.copy(playerBody.position);
-    groundCheckMesh.position.y = playerBody.position.y - 1.1;
-    groundCheckMesh.material.color.set(grounded ? 0x00ff00 : 0xff0000);
-
     // === MOVEMENT ===
     const moveDir = new CANNON.Vec3(0,0,0);
     if(keys.w) moveDir.z -=1;
@@ -166,17 +157,17 @@ function animate(){
     if(moveDir.length()>0) moveDir.normalize();
 
     // Rotate movement by camera yaw
-    const sin = Math.sin(yaw), cos = Math.cos(yaw);
+    const sin=Math.sin(yaw), cos=Math.cos(yaw);
     const rotatedX = moveDir.x*cos - moveDir.z*sin;
     const rotatedZ = moveDir.x*sin + moveDir.z*cos;
-    moveDir.x = rotatedX; moveDir.z = rotatedZ;
+    moveDir.x=rotatedX; moveDir.z=rotatedZ;
 
     const speed = grounded ? moveSpeed : airSpeed;
     const targetVel = moveDir.scale(speed);
     playerBody.velocity.x = targetVel.x;
     playerBody.velocity.z = targetVel.z;
 
-    if(keys.jump && grounded) playerBody.velocity.y = jumpSpeed;
+    if(keys.jump && grounded) playerBody.velocity.y=jumpSpeed;
     keys.jump=false;
 
     if(grounded && moveDir.length()===0){
@@ -186,7 +177,7 @@ function animate(){
 
     // === CAMERA ===
     camera.position.copy(playerBody.position);
-    camera.position.y += 1.6; // eye height
+    camera.position.y += 1.6; // head height
     camera.rotation.set(pitch, yaw, 0);
 
     renderer.render(scene,camera);

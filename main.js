@@ -12,18 +12,22 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+// === LIGHT ===
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 20, 10);
 scene.add(light);
 
 // === PHYSICS WORLD ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+world.broadphase = new CANNON.NaiveBroadphase();
+world.allowSleep = true;
 
-const slipperyMaterial = new CANNON.Material("slippery");
-const contact = new CANNON.ContactMaterial(slipperyMaterial, slipperyMaterial, {
-  friction: 0.0,
-  restitution: 0.0,
+const material = new CANNON.Material();
+const contact = new CANNON.ContactMaterial(material, material, {
+  friction: 0,
+  restitution: 0,
 });
+world.addContactMaterial(contact);
 world.defaultContactMaterial = contact;
 
 // === GROUND ===
@@ -32,7 +36,7 @@ const groundBody = new CANNON.Body({
   type: CANNON.Body.STATIC,
   shape: groundShape,
   position: new CANNON.Vec3(0, -0.5, 0),
-  material: slipperyMaterial,
+  material,
 });
 world.addBody(groundBody);
 
@@ -43,33 +47,31 @@ const groundMesh = new THREE.Mesh(
 scene.add(groundMesh);
 
 // === PLATFORMS ===
-const platforms = [];
-const platformBodies = [];
-function createPlatform(x, y, z) {
+function makePlatform(x, y, z) {
   const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
   const body = new CANNON.Body({
     type: CANNON.Body.STATIC,
     shape,
     position: new CANNON.Vec3(x, y, z),
-    material: slipperyMaterial,
+    material,
   });
   world.addBody(body);
-  platformBodies.push(body);
-
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(4, 1, 4),
     new THREE.MeshStandardMaterial({ color: 0x0000ff })
   );
   mesh.position.copy(body.position);
   scene.add(mesh);
-  platforms.push(mesh);
+  return { mesh, body };
 }
 
-createPlatform(5, 2, 0);
-createPlatform(-5, 4, -5);
-createPlatform(0, 6, 5);
-createPlatform(10, 8, 5);
-createPlatform(-10, 10, 0);
+const platforms = [
+  makePlatform(5, 2, 0),
+  makePlatform(-5, 4, -5),
+  makePlatform(0, 6, 5),
+  makePlatform(10, 8, 5),
+  makePlatform(-10, 10, 0),
+];
 
 // === PLAYER ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
@@ -77,10 +79,9 @@ const playerBody = new CANNON.Body({
   mass: 1,
   shape: playerShape,
   position: new CANNON.Vec3(0, 2, 0),
-  material: slipperyMaterial,
+  material,
 });
 playerBody.fixedRotation = true;
-playerBody.updateMassProperties();
 world.addBody(playerBody);
 
 const playerMesh = new THREE.Mesh(
@@ -88,6 +89,13 @@ const playerMesh = new THREE.Mesh(
   new THREE.MeshStandardMaterial({ color: 0xff0000 })
 );
 scene.add(playerMesh);
+
+// === DEBUG SPHERE FOR GROUND CHECK ===
+const groundCheckMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2),
+  new THREE.MeshBasicMaterial({ color: 0xff0000 })
+);
+scene.add(groundCheckMesh);
 
 // === CONTROLS ===
 const keys = { w: false, a: false, s: false, d: false, jump: false };
@@ -112,16 +120,24 @@ const airSpeed = 8;
 const jumpSpeed = 9;
 const damping = 0.1;
 
-// === RAYCAST FOR GROUND CHECK ===
+// === GROUND DETECTION (broadphase contact check) ===
 function isGrounded() {
-  const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0, -1, 0));
-  const result = new CANNON.RaycastResult();
-  const rayLength = 1.1; // player half height + small offset
-  ray.intersectWorld(world, { skipBackfaces: true, collisionFilterMask: -1, mode: CANNON.Ray.ALL }, result);
-  if (result.hasHit && result.distance < rayLength) {
-    return true;
-  }
-  return false;
+  let grounded = false;
+  const threshold = 1.05; // player half-height + offset
+  world.contacts.forEach((c) => {
+    if (c.bi === playerBody || c.bj === playerBody) {
+      const contactNormal = c.ni.clone();
+      if (c.bi === playerBody) contactNormal.negate(contactNormal);
+      if (contactNormal.y > 0.5) {
+        const contactPoint = c.rj
+          ? c.bj.position.vadd(c.rj)
+          : c.bi.position.vadd(c.ri);
+        const dist = playerBody.position.y - contactPoint.y;
+        if (dist < threshold) grounded = true;
+      }
+    }
+  });
+  return grounded;
 }
 
 // === GAME LOOP ===
@@ -133,6 +149,10 @@ function animate() {
   world.step(1 / 60, delta, 3);
 
   const grounded = isGrounded();
+
+  // Debug indicator
+  groundCheckMesh.position.copy(playerBody.position).y -= 1.1;
+  groundCheckMesh.material.color.set(grounded ? 0x00ff00 : 0xff0000);
 
   // === MOVEMENT ===
   const moveDir = new CANNON.Vec3(0, 0, 0);
@@ -147,13 +167,13 @@ function animate() {
   playerBody.velocity.x = targetVel.x;
   playerBody.velocity.z = targetVel.z;
 
-  // Jumping
+  // === JUMP ===
   if (keys.jump && grounded) {
     playerBody.velocity.y = jumpSpeed;
   }
   keys.jump = false;
 
-  // Apply drag on ground
+  // Apply drag when no movement keys
   if (grounded && moveDir.length() === 0) {
     playerBody.velocity.x *= 1 - damping;
     playerBody.velocity.z *= 1 - damping;
@@ -169,9 +189,7 @@ function animate() {
   // === SYNC MESHES ===
   playerMesh.position.copy(playerBody.position);
   groundMesh.position.copy(groundBody.position);
-  for (let i = 0; i < platforms.length; i++) {
-    platforms[i].position.copy(platformBodies[i].position);
-  }
+  platforms.forEach((p) => p.mesh.position.copy(p.body.position));
 
   renderer.render(scene, camera);
 }

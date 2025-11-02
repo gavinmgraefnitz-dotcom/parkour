@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js';
 import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
-// Three.js scene
+// --- Three.js scene ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
@@ -16,116 +16,129 @@ const light = new THREE.DirectionalLight(0xffffff,1);
 light.position.set(10,10,10);
 scene.add(light);
 
-// Cannon.js world
+// --- Cannon.js world ---
 const world = new CANNON.World({
     gravity: new CANNON.Vec3(0,-9.82,0) // gravity
 });
 
-// Materials
-const physicsMaterial = new CANNON.Material("default");
+// --- Materials ---
+const defaultMaterial = new CANNON.Material('default');
+const contactMaterial = new CANNON.ContactMaterial(defaultMaterial, defaultMaterial, {
+    friction: 0.4,
+    restitution: 0.0
+});
+world.defaultContactMaterial = contactMaterial;
 
-// Ground
+// --- Ground ---
 const groundBody = new CANNON.Body({
     type: CANNON.Body.STATIC,
     shape: new CANNON.Box(new CANNON.Vec3(10,0.5,10)),
     position: new CANNON.Vec3(0,-0.5,0),
-    material: physicsMaterial
+    material: defaultMaterial
 });
 world.addBody(groundBody);
 
-const groundGeo = new THREE.BoxGeometry(20,1,20);
-const groundMat = new THREE.MeshStandardMaterial({color:0x00ff00});
-const groundMesh = new THREE.Mesh(groundGeo,groundMat);
+const groundMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(20,1,20),
+    new THREE.MeshStandardMaterial({color:0x00ff00})
+);
 groundMesh.position.copy(groundBody.position);
 scene.add(groundMesh);
 
-// Platforms
+// --- Platforms ---
 const platforms = [];
 const platformBodies = [];
 
 function createPlatform(x,y,z){
-    const platShape = new CANNON.Box(new CANNON.Vec3(2,0.5,2));
     const platBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
-        shape: platShape,
-        position: new CANNON.Vec3(x,y,z)
+        shape: new CANNON.Box(new CANNON.Vec3(2,0.5,2)),
+        position: new CANNON.Vec3(x,y,z),
+        material: defaultMaterial
     });
     world.addBody(platBody);
     platformBodies.push(platBody);
 
-    const platGeo = new THREE.BoxGeometry(4,1,4);
-    const platMat = new THREE.MeshStandardMaterial({color:0x0000ff});
-    const platMesh = new THREE.Mesh(platGeo,platMat);
+    const platMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(4,1,4),
+        new THREE.MeshStandardMaterial({color:0x0000ff})
+    );
     scene.add(platMesh);
     platforms.push(platMesh);
 }
 
-// Create sample platforms
+// Sample platforms
 createPlatform(5,1,0);
 createPlatform(-6,2,-5);
+createPlatform(0,3,5);
 
-// Player
+// --- Player ---
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5,1,0.5));
 const playerBody = new CANNON.Body({
-    mass: 1,
-    shape: playerShape,
-    position: new CANNON.Vec3(0,1,0),
-    material: physicsMaterial
+    mass:1,
+    shape:playerShape,
+    position:new CANNON.Vec3(0,1,0),
+    material: defaultMaterial
 });
-playerBody.fixedRotation = true; // prevent tipping
+playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
 world.addBody(playerBody);
 
-const playerGeo = new THREE.BoxGeometry(1,2,1);
-const playerMat = new THREE.MeshStandardMaterial({color:0xff0000});
-const playerMesh = new THREE.Mesh(playerGeo,playerMat);
+const playerMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1,2,1),
+    new THREE.MeshStandardMaterial({color:0xff0000})
+);
 scene.add(playerMesh);
 
-// Controls
-const move = {forward:false,backward:false,left:false,right:false,jump:false};
+// --- Controls ---
+const keys = {w:false,s:false,a:false,d:false,jump:false};
 window.addEventListener('keydown',e=>{
-    if(e.code==='KeyW') move.forward=true;
-    if(e.code==='KeyS') move.backward=true;
-    if(e.code==='KeyA') move.left=true;
-    if(e.code==='KeyD') move.right=true;
-    if(e.code==='Space') move.jump=true;
+    if(e.code==='KeyW') keys.w=true;
+    if(e.code==='KeyS') keys.s=true;
+    if(e.code==='KeyA') keys.a=true;
+    if(e.code==='KeyD') keys.d=true;
+    if(e.code==='Space') keys.jump=true;
 });
 window.addEventListener('keyup',e=>{
-    if(e.code==='KeyW') move.forward=false;
-    if(e.code==='KeyS') move.backward=false;
-    if(e.code==='KeyA') move.left=false;
-    if(e.code==='KeyD') move.right=false;
-    if(e.code==='Space') move.jump=false;
+    if(e.code==='KeyW') keys.w=false;
+    if(e.code==='KeyS') keys.s=false;
+    if(e.code==='KeyA') keys.a=false;
+    if(e.code==='KeyD') keys.d=false;
+    if(e.code==='Space') keys.jump=false;
 });
 
-// Animation loop
+// --- Animation loop ---
+const clock = new THREE.Clock();
 function animate(){
     requestAnimationFrame(animate);
+    const delta = clock.getDelta();
 
-    // Apply horizontal movement
+    // Horizontal movement
     const velocity = playerBody.velocity;
     const speed = 5;
-    if(move.forward) velocity.z = -speed;
-    if(move.backward) velocity.z = speed;
-    if(move.left) velocity.x = -speed;
-    if(move.right) velocity.x = speed;
+    velocity.x = 0;
+    velocity.z = 0;
+    if(keys.w) velocity.z = -speed;
+    if(keys.s) velocity.z = speed;
+    if(keys.a) velocity.x = -speed;
+    if(keys.d) velocity.x = speed;
 
-    // Jump
-    if(move.jump){
-        // Only allow jump if roughly on the ground
+    // Jumping
+    if(keys.jump){
+        // Cast ray down to see if on ground
         const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0,-1,0));
         const result = new CANNON.RaycastResult();
-        ray.intersectWorld(world,{collisionFilterMask:-1, skipBackfaces:true},result);
+        ray.intersectWorld(world,{skipBackfaces:true},result);
         if(result.hasHit && result.distance < 1.05){
-            playerBody.velocity.y = 7; // jump strength
+            playerBody.velocity.y = 7;
         }
-        move.jump=false;
+        keys.jump=false;
     }
 
     // Step physics
-    world.step(1/60);
+    world.step(1/60, delta, 3);
 
-    // Sync Three.js meshes
+    // Sync meshes
     playerMesh.position.copy(playerBody.position);
     playerMesh.quaternion.copy(playerBody.quaternion);
     for(let i=0;i<platforms.length;i++){
@@ -135,9 +148,10 @@ function animate(){
     groundMesh.position.copy(groundBody.position);
     groundMesh.quaternion.copy(groundBody.quaternion);
 
-    // Camera follows
+    // Camera follow
     camera.position.x = playerMesh.position.x;
     camera.position.z = playerMesh.position.z + 10;
+    camera.position.y = playerMesh.position.y + 5;
     camera.lookAt(playerMesh.position);
 
     renderer.render(scene,camera);

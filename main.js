@@ -17,9 +17,7 @@ light.position.set(10,10,10);
 scene.add(light);
 
 // --- Cannon.js world ---
-const world = new CANNON.World({
-    gravity: new CANNON.Vec3(0,-9.82,0) // gravity
-});
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
 
 // --- Materials ---
 const defaultMaterial = new CANNON.Material('default');
@@ -80,7 +78,7 @@ const playerBody = new CANNON.Body({
     position:new CANNON.Vec3(0,1,0),
     material: defaultMaterial
 });
-playerBody.fixedRotation = true;
+playerBody.fixedRotation = true; // prevents tipping over
 playerBody.updateMassProperties();
 world.addBody(playerBody);
 
@@ -114,23 +112,23 @@ function animate(){
     const delta = clock.getDelta();
 
     // Horizontal movement
-    const velocity = playerBody.velocity;
     const speed = 5;
-    velocity.x = 0;
-    velocity.z = 0;
-    if(keys.w) velocity.z = -speed;
-    if(keys.s) velocity.z = speed;
-    if(keys.a) velocity.x = -speed;
-    if(keys.d) velocity.x = speed;
+    let moveX = 0;
+    let moveZ = 0;
+    if(keys.w) moveZ -= speed;
+    if(keys.s) moveZ += speed;
+    if(keys.a) moveX -= speed;
+    if(keys.d) moveX += speed;
+
+    // Apply horizontal velocity
+    playerBody.velocity.x = moveX;
+    playerBody.velocity.z = moveZ;
 
     // Jumping
+    const groundTolerance = 0.1; // how close to ground to allow jump
     if(keys.jump){
-        // Cast ray down to see if on ground
-        const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0,-1,0));
-        const result = new CANNON.RaycastResult();
-        ray.intersectWorld(world,{skipBackfaces:true},result);
-        if(result.hasHit && result.distance < 1.05){
-            playerBody.velocity.y = 7;
+        if(Math.abs(playerBody.velocity.y) < groundTolerance){
+            playerBody.velocity.y = 7; // jump strength
         }
         keys.jump=false;
     }
@@ -138,7 +136,7 @@ function animate(){
     // Step physics
     world.step(1/60, delta, 3);
 
-    // Sync meshes
+    // Sync Three.js meshes
     playerMesh.position.copy(playerBody.position);
     playerMesh.quaternion.copy(playerBody.quaternion);
     for(let i=0;i<platforms.length;i++){

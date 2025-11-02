@@ -19,7 +19,6 @@ scene.add(light);
 // === PHYSICS WORLD ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
 
-// Materials
 const slipperyMaterial = new CANNON.Material("slippery");
 const contact = new CANNON.ContactMaterial(slipperyMaterial, slipperyMaterial, {
   friction: 0.0,
@@ -36,7 +35,11 @@ const groundBody = new CANNON.Body({
   material: slipperyMaterial,
 });
 world.addBody(groundBody);
-const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 20), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+
+const groundMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(20, 1, 20),
+  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+);
 scene.add(groundMesh);
 
 // === PLATFORMS ===
@@ -109,14 +112,17 @@ const airSpeed = 8;
 const jumpSpeed = 9;
 const damping = 0.1;
 
-let grounded = false;
-
-// Proper ground detection using collision events
-playerBody.addEventListener("collide", (e) => {
-  const contactNormal = e.contact.ni;
-  // If the collision normal points upward, we’re grounded
-  if (contactNormal.y > 0.5 || contactNormal.y < -0.5) grounded = true;
-});
+// === RAYCAST FOR GROUND CHECK ===
+function isGrounded() {
+  const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0, -1, 0));
+  const result = new CANNON.RaycastResult();
+  const rayLength = 1.1; // player half height + small offset
+  ray.intersectWorld(world, { skipBackfaces: true, collisionFilterMask: -1, mode: CANNON.Ray.ALL }, result);
+  if (result.hasHit && result.distance < rayLength) {
+    return true;
+  }
+  return false;
+}
 
 // === GAME LOOP ===
 const clock = new THREE.Clock();
@@ -125,6 +131,8 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
   world.step(1 / 60, delta, 3);
+
+  const grounded = isGrounded();
 
   // === MOVEMENT ===
   const moveDir = new CANNON.Vec3(0, 0, 0);
@@ -139,21 +147,17 @@ function animate() {
   playerBody.velocity.x = targetVel.x;
   playerBody.velocity.z = targetVel.z;
 
-  // Jump
+  // Jumping
   if (keys.jump && grounded) {
     playerBody.velocity.y = jumpSpeed;
-    grounded = false; // prevent double jumps
   }
   keys.jump = false;
 
-  // Apply small drag on ground
+  // Apply drag on ground
   if (grounded && moveDir.length() === 0) {
     playerBody.velocity.x *= 1 - damping;
     playerBody.velocity.z *= 1 - damping;
   }
-
-  // Reset grounded if too high above surface (fallback)
-  if (playerBody.velocity.y < -1) grounded = false;
 
   // === CAMERA FOLLOW ===
   const camTarget = new THREE.Vector3().copy(playerBody.position);

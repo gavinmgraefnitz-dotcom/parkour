@@ -92,10 +92,14 @@ scene.add(playerMesh);
 
 // === DEBUG SPHERE FOR GROUND CHECK ===
 const groundCheckMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.2),
-  new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  new THREE.SphereGeometry(0.3, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 })
 );
 scene.add(groundCheckMesh);
+
+// Inside animate() - update sphere position
+groundCheckMesh.position.copy(playerBody.position);
+groundCheckMesh.position.y = playerBody.position.y - 1.1; // slightly below player
 
 // === CONTROLS ===
 const keys = { w: false, a: false, s: false, d: false, jump: false };

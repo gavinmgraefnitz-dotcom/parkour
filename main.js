@@ -1,13 +1,27 @@
-// main.js
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js';
+// Player
+const playerGeometry = new THREE.BoxGeometry(1,2,1);
+const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+const player = new THREE.Mesh(playerGeometry, playerMaterial);
+player.position.y = 1;
+scene.add(player);
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // sky color
+// Movement
+const move = { forward: false, backward: false, left: false, right: false, jump: false };
+const velocity = new THREE.Vector3();
+const speed = 0.1;
+const jumpForce = 0.2;
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-camera.position.set(0, 5, 10);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
+window.addEventListener('keydown', (e) => {
+    if(e.code === 'KeyW') move.forward = true;
+    if(e.code === 'KeyS') move.backward = true;
+    if(e.code === 'KeyA') move.left = true;
+    if(e.code === 'KeyD') move.right = true;
+    if(e.code === 'Space') move.jump = true;
+});
+window.addEventListener('keyup', (e) => {
+    if(e.code === 'KeyW') move.forward = false;
+    if(e.code === 'KeyS') move.backward = false;
+    if(e.code === 'KeyA') move.left = false;
+    if(e.code === 'KeyD') move.right = false;
+    if(e.code === 'Space') move.jump = false;
+});

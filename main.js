@@ -5,9 +5,10 @@ import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cann
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
+// === CAMERA ===
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 5, 10);
 
+// === RENDERER ===
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
@@ -29,18 +30,10 @@ world.defaultContactMaterial = contact;
 
 // === GROUND ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-const groundBody = new CANNON.Body({
-  type: CANNON.Body.STATIC,
-  shape: groundShape,
-  position: new CANNON.Vec3(0, -0.5, 0),
-  material,
-});
+const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: groundShape, position: new CANNON.Vec3(0, -0.5, 0), material });
 world.addBody(groundBody);
 
-const groundMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(20, 1, 20),
-  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
-);
+const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 20), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
 scene.add(groundMesh);
 
 // === PLATFORMS ===
@@ -68,9 +61,6 @@ const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, position: new 
 playerBody.fixedRotation = true;
 world.addBody(playerBody);
 
-const playerMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
-scene.add(playerMesh);
-
 // === DEBUG SPHERE ===
 const groundCheckMesh = new THREE.Mesh(
   new THREE.SphereGeometry(0.3, 16, 16),
@@ -95,6 +85,24 @@ window.addEventListener("keyup", (e) => {
   if (e.code === "Space") keys.jump = false;
 });
 
+// === MOUSE LOOK ===
+let yaw = 0;
+let pitch = 0;
+const sensitivity = 0.002;
+
+document.body.requestPointerLock = document.body.requestPointerLock || document.body.mozRequestPointerLock;
+document.body.addEventListener("click", () => {
+  document.body.requestPointerLock();
+});
+
+document.addEventListener("mousemove", (event) => {
+  if (document.pointerLockElement === document.body) {
+    yaw -= event.movementX * sensitivity;
+    pitch -= event.movementY * sensitivity;
+    pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+  }
+});
+
 // === MOVEMENT SETTINGS ===
 const moveSpeed = 10;
 const airSpeed = 8;
@@ -103,8 +111,8 @@ const damping = 0.1;
 
 // === GROUND DETECTION ===
 function isGrounded() {
-  const playerBottomY = playerBody.position.y - 1; // half player height
-  const epsilon = 0.15; // small buffer
+  const playerBottomY = playerBody.position.y - 1; // half height
+  const epsilon = 0.15;
   let grounded = false;
 
   world.contacts.forEach((c) => {
@@ -128,7 +136,7 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
-  world.step(1 / 60, delta, 3);
+  world.step(1/60, delta, 3);
 
   const grounded = isGrounded();
 
@@ -145,34 +153,33 @@ function animate() {
   if (keys.d) moveDir.x += 1;
   if (moveDir.length() > 0) moveDir.normalize();
 
+  // Rotate movement by camera yaw
+  const sin = Math.sin(yaw);
+  const cos = Math.cos(yaw);
+  const rotatedX = moveDir.x * cos - moveDir.z * sin;
+  const rotatedZ = moveDir.x * sin + moveDir.z * cos;
+  moveDir.x = rotatedX;
+  moveDir.z = rotatedZ;
+
   const speed = grounded ? moveSpeed : airSpeed;
   const targetVel = moveDir.scale(speed);
   playerBody.velocity.x = targetVel.x;
   playerBody.velocity.z = targetVel.z;
 
-  // === JUMP ===
-  if (keys.jump && grounded) {
-    playerBody.velocity.y = jumpSpeed;
-  }
+  // Jump
+  if (keys.jump && grounded) playerBody.velocity.y = jumpSpeed;
   keys.jump = false;
 
-  // Apply damping when no movement keys
+  // Apply drag
   if (grounded && moveDir.length() === 0) {
     playerBody.velocity.x *= 1 - damping;
     playerBody.velocity.z *= 1 - damping;
   }
 
-  // === CAMERA FOLLOW ===
-  const camTarget = new THREE.Vector3().copy(playerBody.position);
-  const desiredOffset = new THREE.Vector3(0, 4, 10);
-  const desiredPos = camTarget.clone().add(desiredOffset);
-  camera.position.lerp(desiredPos, delta * 4);
-  camera.lookAt(camTarget);
-
-  // === SYNC MESHES ===
-  playerMesh.position.copy(playerBody.position);
-  groundMesh.position.copy(groundBody.position);
-  platforms.forEach((p) => p.mesh.position.copy(p.body.position));
+  // === CAMERA ===
+  camera.position.copy(playerBody.position);
+  camera.position.y += 0.8; // eye height
+  camera.rotation.set(pitch, yaw, 0);
 
   renderer.render(scene, camera);
 }

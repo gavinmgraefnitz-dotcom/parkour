@@ -1,19 +1,16 @@
 // main.js
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js';
 
-// Scene & Camera
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 5, 10);
 
-// Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Light
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 10, 10);
 scene.add(light);
@@ -48,7 +45,7 @@ const player = new THREE.Mesh(playerGeo, playerMat);
 player.position.y = 1;
 scene.add(player);
 
-// Movement variables
+// Movement
 const move = { forward: false, backward: false, left: false, right: false, jump: false };
 const velocity = new THREE.Vector3();
 const speed = 0.1;
@@ -56,7 +53,7 @@ const jumpForce = 0.2;
 const gravity = -0.01;
 
 // Key events
-window.addEventListener('keydown', (e) => {
+window.addEventListener('keydown', e => {
     if(e.code === 'KeyW') move.forward = true;
     if(e.code === 'KeyS') move.backward = true;
     if(e.code === 'KeyA') move.left = true;
@@ -64,7 +61,7 @@ window.addEventListener('keydown', (e) => {
     if(e.code === 'Space') move.jump = true;
 });
 
-window.addEventListener('keyup', (e) => {
+window.addEventListener('keyup', e => {
     if(e.code === 'KeyW') move.forward = false;
     if(e.code === 'KeyS') move.backward = false;
     if(e.code === 'KeyA') move.left = false;
@@ -78,13 +75,6 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// Helper function: simple AABB collision
-function checkCollision(player, platform) {
-    const playerBox = new THREE.Box3().setFromObject(player);
-    const platformBox = new THREE.Box3().setFromObject(platform);
-    return playerBox.intersectsBox(platformBox);
-}
 
 // Animate loop
 function animate() {
@@ -100,19 +90,24 @@ function animate() {
     velocity.y += gravity;
     player.position.y += velocity.y;
 
-    // Collision with platforms
+    // Collision detection
     let onPlatform = false;
+
     for(const plat of platforms.concat([ground])) {
-        if(velocity.y <= 0) { // Only check when falling
-            const playerBox = new THREE.Box3().setFromObject(player);
-            const platformBox = new THREE.Box3().setFromObject(plat);
-            if(playerBox.intersectsBox(platformBox)) {
-                const platTop = plat.position.y + (plat.geometry.parameters.height / 2);
-                if(player.position.y - 1 <= platTop) {
-                    player.position.y = platTop + 1; // player height /2
-                    velocity.y = 0;
-                    onPlatform = true;
-                }
+        const platTop = plat.position.y + plat.geometry.parameters.height / 2;
+        const platMinX = plat.position.x - plat.geometry.parameters.width / 2;
+        const platMaxX = plat.position.x + plat.geometry.parameters.width / 2;
+        const platMinZ = plat.position.z - plat.geometry.parameters.depth / 2;
+        const platMaxZ = plat.position.z + plat.geometry.parameters.depth / 2;
+
+        // Check if player is above platform and within X/Z bounds
+        if(player.position.x + 0.5 > platMinX && player.position.x - 0.5 < platMaxX &&
+           player.position.z + 0.5 > platMinZ && player.position.z - 0.5 < platMaxZ) {
+
+            if(player.position.y - 1 <= platTop && player.position.y - 1 >= platTop + velocity.y) {
+                player.position.y = platTop + 1; // player half-height
+                velocity.y = 0;
+                onPlatform = true;
             }
         }
     }
@@ -129,4 +124,5 @@ function animate() {
 
     renderer.render(scene, camera);
 }
+
 animate();

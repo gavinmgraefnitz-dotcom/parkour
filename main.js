@@ -1,6 +1,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
 import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
+// === Scene & Camera ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
@@ -9,52 +10,95 @@ const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Light
-const light = new THREE.DirectionalLight(0xffffff, 1);
+// === Light ===
+const light = new THREE.DirectionalLight(0xffffff,1);
 light.position.set(10,20,10);
 scene.add(light);
 
-// Physics world
+// === Physics ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
 world.broadphase = new CANNON.NaiveBroadphase();
 world.allowSleep = true;
 
-// Ground
+// Physics materials
+const material = new CANNON.Material();
+world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction:0, restitution:0 });
+
+// === Ground ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10,0.5,10));
-const groundBody = new CANNON.Body({ mass:0, shape: groundShape });
+const groundBody = new CANNON.Body({ mass:0, shape:groundShape });
 world.addBody(groundBody);
 
-const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(20,1,20), new THREE.MeshStandardMaterial({ color:0x00ff00 }));
+const groundMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(20,1,20),
+  new THREE.MeshStandardMaterial({ color:0x00ff00 })
+);
 scene.add(groundMesh);
 
-// Player physics body (invisible)
+// === Platforms ===
+function makePlatform(x,y,z){
+    const shape = new CANNON.Box(new CANNON.Vec3(2,0.5,2));
+    const body = new CANNON.Body({ type:CANNON.Body.STATIC, shape, position:new CANNON.Vec3(x,y,z), material });
+    world.addBody(body);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(4,1,4), new THREE.MeshStandardMaterial({ color:0x0000ff }));
+    mesh.position.copy(body.position);
+    scene.add(mesh);
+    return { mesh, body };
+}
+
+const platforms = [
+    makePlatform(5,2,0),
+    makePlatform(-5,4,-5),
+    makePlatform(0,6,5),
+    makePlatform(10,8,5),
+    makePlatform(-10,10,0)
+];
+
+// === Player body ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5,1,0.5));
 const playerBody = new CANNON.Body({ mass:1, shape:playerShape });
 playerBody.position.set(0,2,0);
 playerBody.fixedRotation = true;
 world.addBody(playerBody);
 
-// Hands attached to camera
+// === Hands ===
 const hands = new THREE.Group();
 camera.add(hands);
 
-const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.8,0.3), new THREE.MeshStandardMaterial({ color:0xffcc99 }));
+const leftHand = new THREE.Mesh(
+  new THREE.BoxGeometry(0.3,0.8,0.3),
+  new THREE.MeshStandardMaterial({ color:0xffcc99 })
+);
 leftHand.position.set(-0.35,-0.5,-0.5);
 hands.add(leftHand);
 
-const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.8,0.3), new THREE.MeshStandardMaterial({ color:0xffcc99 }));
+const rightHand = new THREE.Mesh(
+  new THREE.BoxGeometry(0.3,0.8,0.3),
+  new THREE.MeshStandardMaterial({ color:0xffcc99 })
+);
 rightHand.position.set(0.35,-0.5,-0.5);
 hands.add(rightHand);
 
-// Controls
+// === Controls ===
 const keys = { w:false, a:false, s:false, d:false, jump:false };
-window.addEventListener("keydown", e => { if(e.code==="KeyW") keys.w=true; if(e.code==="KeyA") keys.a=true; if(e.code==="KeyS") keys.s=true; if(e.code==="KeyD") keys.d=true; if(e.code==="Space") keys.jump=true; });
-window.addEventListener("keyup", e => { if(e.code==="KeyW") keys.w=false; if(e.code==="KeyA") keys.a=false; if(e.code==="KeyS") keys.s=false; if(e.code==="KeyD") keys.d=false; if(e.code==="Space") keys.jump=false; });
+window.addEventListener("keydown", e=>{
+  if(e.code==="KeyW") keys.w=true;
+  if(e.code==="KeyA") keys.a=true;
+  if(e.code==="KeyS") keys.s=true;
+  if(e.code==="KeyD") keys.d=true;
+  if(e.code==="Space") keys.jump=true;
+});
+window.addEventListener("keyup", e=>{
+  if(e.code==="KeyW") keys.w=false;
+  if(e.code==="KeyA") keys.a=false;
+  if(e.code==="KeyS") keys.s=false;
+  if(e.code==="KeyD") keys.d=false;
+  if(e.code==="Space") keys.jump=false;
+});
 
-// Mouse look
+// === Mouse Look ===
 let yaw=0, pitch=0;
 const sensitivity = 0.002;
-
 document.body.addEventListener("click",()=>document.body.requestPointerLock());
 document.addEventListener("mousemove", e=>{
     if(document.pointerLockElement===document.body){
@@ -64,12 +108,13 @@ document.addEventListener("mousemove", e=>{
     }
 });
 
-// Movement settings
+// === Movement Settings ===
 const moveSpeed = 10;
 const airSpeed = 8;
 const jumpSpeed = 9;
 const damping = 0.1;
 
+// === Ground Check ===
 function isGrounded(){
     for(let c of world.contacts){
         if(c.bi===playerBody || c.bj===playerBody){
@@ -81,8 +126,21 @@ function isGrounded(){
     return false;
 }
 
-// Game loop
+// === Camera Bob & Hand Sway Variables ===
+let bobTime = 0;
+function applyCameraBob(delta, speed){
+    bobTime += delta * speed * 5;
+    const bobOffset = Math.sin(bobTime) * 0.05;
+    camera.position.y = playerBody.position.y + 1.6 + bobOffset;
+
+    // Hands sway
+    hands.rotation.x = Math.sin(bobTime*1.5) * 0.05;
+    hands.rotation.y = Math.sin(bobTime) * 0.1;
+}
+
+// === Game Loop ===
 const clock = new THREE.Clock();
+
 function animate(){
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(),0.05);
@@ -99,8 +157,8 @@ function animate(){
     if(dir.length()>0) dir.normalize();
 
     const sin=Math.sin(yaw), cos=Math.cos(yaw);
-    const x = dir.x*cos - dir.z*sin;
-    const z = dir.x*sin + dir.z*cos;
+    const x=dir.x*cos - dir.z*sin;
+    const z=dir.x*sin + dir.z*cos;
     dir.x=x; dir.z=z;
 
     const speed = grounded ? moveSpeed : airSpeed;
@@ -108,20 +166,30 @@ function animate(){
     playerBody.velocity.x = vel.x;
     playerBody.velocity.z = vel.z;
 
-    if(keys.jump && grounded) playerBody.velocity.y = jumpSpeed;
+    // Jump
+    if(keys.jump && grounded){
+        playerBody.velocity.y = jumpSpeed;
+    }
     keys.jump=false;
 
+    // Damping
     if(grounded && dir.length()===0){
         playerBody.velocity.x *= 1-damping;
         playerBody.velocity.z *= 1-damping;
     }
 
-    // Camera follows player
-    camera.position.copy(playerBody.position);
-    camera.position.y += 1.6; // eye height
+    // Camera follows player + apply bob/sway
+    applyCameraBob(delta, dir.length());
     camera.rotation.set(pitch, yaw, 0);
 
     renderer.render(scene,camera);
 }
 
 animate();
+
+// --- Window Resize ---
+window.addEventListener("resize",()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});

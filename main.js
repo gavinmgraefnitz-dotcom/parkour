@@ -29,13 +29,17 @@ scene.add(ground);
 const platformGeo = new THREE.BoxGeometry(4, 1, 4);
 const platformMat = new THREE.MeshStandardMaterial({ color: 0x0000ff });
 
+const platforms = [];
+
 const platform1 = new THREE.Mesh(platformGeo, platformMat);
 platform1.position.set(5, 1, 0);
 scene.add(platform1);
+platforms.push(platform1);
 
 const platform2 = new THREE.Mesh(platformGeo, platformMat);
 platform2.position.set(-6, 2, -5);
 scene.add(platform2);
+platforms.push(platform2);
 
 // Player
 const playerGeo = new THREE.BoxGeometry(1, 2, 1);
@@ -51,6 +55,7 @@ const speed = 0.1;
 const jumpForce = 0.2;
 const gravity = -0.01;
 
+// Key events
 window.addEventListener('keydown', (e) => {
     if(e.code === 'KeyW') move.forward = true;
     if(e.code === 'KeyS') move.backward = true;
@@ -74,6 +79,13 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Helper function: simple AABB collision
+function checkCollision(player, platform) {
+    const playerBox = new THREE.Box3().setFromObject(player);
+    const platformBox = new THREE.Box3().setFromObject(platform);
+    return playerBox.intersectsBox(platformBox);
+}
+
 // Animate loop
 function animate() {
     requestAnimationFrame(animate);
@@ -84,13 +96,30 @@ function animate() {
     if(move.left) player.position.x -= speed;
     if(move.right) player.position.x += speed;
 
-    // Jump & gravity
-    if(move.jump && player.position.y <= 1.01) velocity.y = jumpForce;
+    // Apply gravity
     velocity.y += gravity;
     player.position.y += velocity.y;
-    if(player.position.y < 1) { 
-        player.position.y = 1; 
-        velocity.y = 0; 
+
+    // Collision with platforms
+    let onPlatform = false;
+    for(const plat of platforms.concat([ground])) {
+        if(velocity.y <= 0) { // Only check when falling
+            const playerBox = new THREE.Box3().setFromObject(player);
+            const platformBox = new THREE.Box3().setFromObject(plat);
+            if(playerBox.intersectsBox(platformBox)) {
+                const platTop = plat.position.y + (plat.geometry.parameters.height / 2);
+                if(player.position.y - 1 <= platTop) {
+                    player.position.y = platTop + 1; // player height /2
+                    velocity.y = 0;
+                    onPlatform = true;
+                }
+            }
+        }
+    }
+
+    // Jump
+    if(move.jump && onPlatform) {
+        velocity.y = jumpForce;
     }
 
     // Camera follows player

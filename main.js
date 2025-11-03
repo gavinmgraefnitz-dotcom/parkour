@@ -12,7 +12,7 @@ document.body.appendChild(renderer.domElement);
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-camera.position.y = 1.6; // eye height
+camera.position.y = 1.6;
 
 // --- Lights ---
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));
@@ -47,16 +47,16 @@ const playerShape = new CANNON.Sphere(0.5);
 const playerBody = new CANNON.Body({ mass:5, material:playerMat });
 playerBody.addShape(playerShape);
 playerBody.position.set(0,2,0);
-playerBody.linearDamping = 0.9; // slows sliding
+playerBody.linearDamping = 0.9;
 world.addBody(playerBody);
 
 // --- Input ---
 const keys = { w:false, a:false, s:false, d:false, space:false };
-window.addEventListener("keydown", e => { if(e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = true; });
-window.addEventListener("keyup", e => { if(e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = false; });
+window.addEventListener("keydown", e=>{ if(e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = true; });
+window.addEventListener("keyup", e=>{ if(e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = false; });
 
 // --- Mouse look ---
-let yaw = 0, pitch = 0;
+let yaw=0, pitch=0;
 const sensitivity = 0.002;
 document.body.addEventListener("click", ()=>document.body.requestPointerLock());
 document.addEventListener("mousemove", e=>{
@@ -67,43 +67,46 @@ document.addEventListener("mousemove", e=>{
   }
 });
 
-// --- Jump detection ---
-let canJump = false;
-playerBody.addEventListener("collide", e=>{
-  if(e.contact && e.contact.ni.y > 0.5) canJump = true;
-});
+// --- Ground check ---
+function isOnGround(){
+  const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0,-1,0));
+  const result = new CANNON.RaycastResult();
+  ray.intersectWorld(world, { collisionFilterMask: -1, skipBackfaces:true }, result);
+  if(result.hasHit && result.distance <= 0.51) return true;
+  return false;
+}
 
 // --- Animate ---
 const clock = new THREE.Clock();
 function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(),0.05);
 
-  // --- Physics step ---
+  // Step physics
   world.step(1/60, dt, 3);
 
   // --- Movement ---
-  const forward = new CANNON.Vec3(-Math.sin(yaw),0,-Math.cos(yaw));
-  const right = new CANNON.Vec3(Math.cos(yaw),0,-Math.sin(yaw));
-  let move = new CANNON.Vec3(0,0,0);
+  const speed = 10;
+  let inputDir = new THREE.Vector3();
+  const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const right = new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  if(keys.w) inputDir.add(forward);
+  if(keys.s) inputDir.sub(forward);
+  if(keys.a) inputDir.sub(right);
+  if(keys.d) inputDir.add(right);
+  if(inputDir.length()>0) inputDir.normalize();
 
-  if(keys.w) move.vadd(forward, move);
-  if(keys.s) move.vsub(forward, move);
-  if(keys.a) move.vsub(right, move);
-  if(keys.d) move.vadd(right, move);
-
-  if(move.length()>0) move.normalize();
-  const speed = 5;
-  playerBody.velocity.x += (move.x*speed - playerBody.velocity.x)*0.2;
-  playerBody.velocity.z += (move.z*speed - playerBody.velocity.z)*0.2;
+  // Apply force for movement
+  const velocity = new CANNON.Vec3(inputDir.x*speed, playerBody.velocity.y, inputDir.z*speed);
+  playerBody.velocity.x = velocity.x;
+  playerBody.velocity.z = velocity.z;
 
   // Jump
-  if(keys.space && canJump){
+  if(keys.space && isOnGround()){
     playerBody.velocity.y = 6;
-    canJump = false;
   }
 
-  // --- Camera follows player ---
+  // Camera follows
   camera.position.copy(playerBody.position);
   camera.position.y += 1.6;
   camera.rotation.set(pitch, yaw, 0);

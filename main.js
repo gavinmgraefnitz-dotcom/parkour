@@ -9,8 +9,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// === Camera Setup (Yaw + Pitch separation) ===
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+// === Camera Setup (Yaw + Pitch) ===
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.05, 1000);
 const pitchObject = new THREE.Object3D();
 pitchObject.add(camera);
 const yawObject = new THREE.Object3D();
@@ -42,23 +42,23 @@ scene.add(groundMesh);
 
 // === Platforms ===
 function makePlatform(x, y, z) {
-  const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
-  world.addBody(body);
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
-  mesh.position.copy(body.position);
-  scene.add(mesh);
+    const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
+    const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
+    world.addBody(body);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
+    mesh.position.copy(body.position);
+    scene.add(mesh);
 }
-makePlatform(5, 2, 0);
-makePlatform(-5, 4, -5);
-makePlatform(0, 6, 5);
-makePlatform(10, 8, 5);
-makePlatform(-10, 10, 0);
+makePlatform(5,2,0);
+makePlatform(-5,4,-5);
+makePlatform(0,6,5);
+makePlatform(10,8,5);
+makePlatform(-10,10,0);
 
 // === Player Body ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
-playerBody.position.set(0, 2, 0);
+const playerBody = new CANNON.Body({ mass:1, shape: playerShape, material });
+playerBody.position.set(0,2,0);
 playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
 world.addBody(playerBody);
@@ -74,124 +74,123 @@ rightHand.position.set(0.2, -0.4, -0.5);
 hands.add(leftHand);
 hands.add(rightHand);
 
-// === Legs & Feet (visible when looking down) ===
+// === Legs & Feet as a separate body group (in front of camera) ===
+const bodyGroup = new THREE.Group();
+scene.add(bodyGroup); // will follow player position
+
 const legsGroup = new THREE.Group();
-camera.add(legsGroup);
-legsGroup.position.set(0, -0.8, -0.5); // forward and down to prevent clipping
+legsGroup.position.set(0, -1.5, -1); // lowered & in front
+bodyGroup.add(legsGroup);
 
 // Left leg
-const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-leftLeg.position.set(-0.15, -0.4, 0);
+const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:0x333333}));
+leftLeg.position.set(-0.15,0,0);
 legsGroup.add(leftLeg);
 
 // Right leg
-const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-rightLeg.position.set(0.15, -0.4, 0);
+const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:0x333333}));
+rightLeg.position.set(0.15,0,0);
 legsGroup.add(rightLeg);
 
 // Left foot
-const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
-leftFoot.position.set(-0.15, -0.85, 0.1);
+const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.1,0.4), new THREE.MeshStandardMaterial({color:0x555555}));
+leftFoot.position.set(-0.15,-0.9,0.1);
 legsGroup.add(leftFoot);
 
 // Right foot
-const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
-rightFoot.position.set(0.15, -0.85, 0.1);
+const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.1,0.4), new THREE.MeshStandardMaterial({color:0x555555}));
+rightFoot.position.set(0.15,-0.9,0.1);
 legsGroup.add(rightFoot);
 
-// === Input Handling ===
-const keys = { w: false, a: false, s: false, d: false, jump: false };
-window.addEventListener("keydown", e => { if(e.code in keys) keys[e.code] = true; });
-window.addEventListener("keyup", e => { if(e.code in keys) keys[e.code] = false; });
+// === Input ===
+const keys = {w:false,a:false,s:false,d:false,jump:false};
+window.addEventListener("keydown",e=>{ if(e.code in keys) keys[e.code]=true; });
+window.addEventListener("keyup",e=>{ if(e.code in keys) keys[e.code]=false; });
 
 // === Mouse Look ===
-let yaw = 0, pitch = 0;
-const sensitivity = 0.002;
-document.body.addEventListener("click", () => document.body.requestPointerLock());
-document.addEventListener("mousemove", e => {
-  if(document.pointerLockElement === document.body) {
-    yaw -= e.movementX * sensitivity;
-    pitch -= e.movementY * sensitivity;
-    pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
-  }
+let yaw=0,pitch=0;
+const sensitivity=0.002;
+document.body.addEventListener("click",()=>document.body.requestPointerLock());
+document.addEventListener("mousemove",e=>{
+    if(document.pointerLockElement===document.body){
+        yaw -= e.movementX*sensitivity;
+        pitch -= e.movementY*sensitivity;
+        pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+    }
 });
 
 // === Movement Settings ===
-const moveSpeed = 15, jumpSpeed = 9, damping = 0.1;
+const moveSpeed = 15, jumpSpeed = 9, damping=0.1;
 let canJump = false;
-playerBody.addEventListener("collide", e => { if(e.contact.ni.y>0.5) canJump = true; });
+playerBody.addEventListener("collide", e=>{ if(e.contact.ni.y>0.5) canJump=true; });
 
-// === Camera & Hand/Leg Bob ===
-let bobTime = 0, jumpOffset = 0;
-function applyCameraBob(delta, moving) {
-  bobTime += delta * (moving ? 6 : 2);
-  const bobOffset = moving ? Math.sin(bobTime)*0.05 : 0;
-  const targetJumpOffset = -playerBody.velocity.y*0.02;
-  jumpOffset += (targetJumpOffset-jumpOffset)*0.1;
+// === Camera & Bobbing ===
+let bobTime=0,jumpOffset=0;
+function applyCameraBob(delta, moving){
+    bobTime += delta*(moving?6:2);
+    const bobOffset = moving?Math.sin(bobTime)*0.05:0;
+    const targetJumpOffset = -playerBody.velocity.y*0.02;
+    jumpOffset += (targetJumpOffset-jumpOffset)*0.1;
 
-  camera.position.y = 1.6 + bobOffset + jumpOffset;
+    camera.position.y = 1.6 + bobOffset + jumpOffset;
 
-  // Hands
-  hands.position.y = -0.4 + jumpOffset*1.5;
-  hands.rotation.x = moving ? Math.sin(bobTime*1.5)*0.05 + jumpOffset*0.3 : jumpOffset*0.3;
-  hands.rotation.y = moving ? Math.sin(bobTime)*0.1 : 0;
+    hands.position.y = -0.4 + jumpOffset*1.5;
+    hands.rotation.x = moving?Math.sin(bobTime*1.5)*0.05 + jumpOffset*0.3 : jumpOffset*0.3;
+    hands.rotation.y = moving?Math.sin(bobTime)*0.1:0;
 
-  // Legs & Feet
-  if(moving) {
-    leftLeg.rotation.x = Math.sin(bobTime*2)*0.3;
-    rightLeg.rotation.x = Math.sin(bobTime*2+Math.PI)*0.3;
-    leftFoot.rotation.x = Math.sin(bobTime*2+Math.PI)*0.2;
-    rightFoot.rotation.x = Math.sin(bobTime*2)*0.2;
-  } else {
-    leftLeg.rotation.x = rightLeg.rotation.x = leftFoot.rotation.x = rightFoot.rotation.x = 0;
-  }
+    if(moving){
+        leftLeg.rotation.x = Math.sin(bobTime*2)*0.3;
+        rightLeg.rotation.x = Math.sin(bobTime*2+Math.PI)*0.3;
+        leftFoot.rotation.x = Math.sin(bobTime*2+Math.PI)*0.2;
+        rightFoot.rotation.x = Math.sin(bobTime*2)*0.2;
+    }else{
+        leftLeg.rotation.x = rightLeg.rotation.x = leftFoot.rotation.x = rightFoot.rotation.x = 0;
+    }
 }
 
 // === Main Loop ===
 const clock = new THREE.Clock();
-function animate() {
-  requestAnimationFrame(animate);
-  const delta = Math.min(clock.getDelta(), 0.05);
-  world.step(1/60, delta, 3);
+function animate(){
+    requestAnimationFrame(animate);
+    const delta = Math.min(clock.getDelta(),0.05);
+    world.step(1/60, delta,3);
 
-  // Movement relative to yaw
-  const forward = new CANNON.Vec3(-Math.sin(yaw),0,-Math.cos(yaw));
-  const right = new CANNON.Vec3(Math.cos(yaw),0,-Math.sin(yaw));
-  const moveDir = new CANNON.Vec3(0,0,0);
-  if(keys.w) moveDir.vadd(forward, moveDir);
-  if(keys.s) moveDir.vsub(forward, moveDir);
-  if(keys.a) moveDir.vsub(right, moveDir);
-  if(keys.d) moveDir.vadd(right, moveDir);
-  if(moveDir.length()>0) moveDir.normalize();
-  const desired = moveDir.scale(moveSpeed);
-  playerBody.velocity.x += (desired.x - playerBody.velocity.x)*0.2;
-  playerBody.velocity.z += (desired.z - playerBody.velocity.z)*0.2;
+    // Movement
+    const forward = new CANNON.Vec3(-Math.sin(yaw),0,-Math.cos(yaw));
+    const right = new CANNON.Vec3(Math.cos(yaw),0,-Math.sin(yaw));
+    const moveDir = new CANNON.Vec3(0,0,0);
+    if(keys.w) moveDir.vadd(forward,moveDir);
+    if(keys.s) moveDir.vsub(forward,moveDir);
+    if(keys.a) moveDir.vsub(right,moveDir);
+    if(keys.d) moveDir.vadd(right,moveDir);
+    if(moveDir.length()>0) moveDir.normalize();
+    const desired = moveDir.scale(moveSpeed);
+    playerBody.velocity.x += (desired.x-playerBody.velocity.x)*0.2;
+    playerBody.velocity.z += (desired.z-playerBody.velocity.z)*0.2;
 
-  if(keys.Space && canJump){
-    playerBody.velocity.y = jumpSpeed;
-    canJump = false;
-  }
+    if(keys.Space && canJump){ playerBody.velocity.y=jumpSpeed; canJump=false; }
 
-  if(moveDir.length()===0){
-    playerBody.velocity.x *= 1-damping;
-    playerBody.velocity.z *= 1-damping;
-  }
+    if(moveDir.length()===0){ playerBody.velocity.x*=(1-damping); playerBody.velocity.z*=(1-damping); }
 
-  // Camera follows player
-  yawObject.position.copy(playerBody.position);
-  yawObject.position.y += 1.6;
-  yawObject.rotation.y = yaw;
-  pitchObject.rotation.x = pitch;
+    // Update camera
+    yawObject.position.copy(playerBody.position);
+    yawObject.position.y += 1.6;
+    yawObject.rotation.y = yaw;
+    pitchObject.rotation.x = pitch;
 
-  applyCameraBob(delta, moveDir.length()>0);
+    // Update body group (legs & feet)
+    bodyGroup.position.copy(playerBody.position);
+    bodyGroup.position.y += 0.5; // waist height
+    bodyGroup.rotation.y = yaw;
 
-  renderer.render(scene, camera);
+    applyCameraBob(delta, moveDir.length()>0);
+    renderer.render(scene,camera);
 }
 animate();
 
 // === Window Resize ===
 window.addEventListener("resize", ()=>{
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });

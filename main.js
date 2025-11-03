@@ -10,7 +10,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // === Camera Setup (Yaw + Pitch separation) ===
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
 const pitchObject = new THREE.Object3D();
 pitchObject.add(camera);
 const yawObject = new THREE.Object3D();
@@ -74,28 +74,29 @@ rightHand.position.set(0.2, -0.4, -0.5);
 hands.add(leftHand);
 hands.add(rightHand);
 
-// === Legs & Feet ===
+// === Legs & Feet (visible when looking down) ===
 const legsGroup = new THREE.Group();
 camera.add(legsGroup);
+legsGroup.position.set(0, -0.8, -0.5); // forward and down to prevent clipping
 
 // Left leg
 const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-leftLeg.position.set(-0.15, -0.9, -0.2);
+leftLeg.position.set(-0.15, -0.4, 0);
 legsGroup.add(leftLeg);
 
 // Right leg
 const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-rightLeg.position.set(0.15, -0.9, -0.2);
+rightLeg.position.set(0.15, -0.4, 0);
 legsGroup.add(rightLeg);
 
 // Left foot
 const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
-leftFoot.position.set(-0.15, -1.35, 0);
+leftFoot.position.set(-0.15, -0.85, 0.1);
 legsGroup.add(leftFoot);
 
 // Right foot
 const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
-rightFoot.position.set(0.15, -1.35, 0);
+rightFoot.position.set(0.15, -0.85, 0.1);
 legsGroup.add(rightFoot);
 
 // === Input Handling ===

@@ -9,13 +9,9 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// === Camera Setup (Yaw + Pitch) ===
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.05, 1000);
-const pitchObject = new THREE.Object3D();
-pitchObject.add(camera);
-const yawObject = new THREE.Object3D();
-yawObject.add(pitchObject);
-scene.add(yawObject);
+// === Camera (player head) ===
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+scene.add(camera);
 
 // === Lighting ===
 const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -23,7 +19,7 @@ light.position.set(10, 20, 10);
 scene.add(light);
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
-// === Physics World ===
+// === Physics ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
 const material = new CANNON.Material();
 world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction: 0, restitution: 0 });
@@ -35,9 +31,10 @@ groundBody.position.set(0, -0.5, 0);
 world.addBody(groundBody);
 
 const groundMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(20, 1, 20),
-  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+    new THREE.BoxGeometry(20, 1, 20),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00 })
 );
+groundMesh.position.copy(groundBody.position);
 scene.add(groundMesh);
 
 // === Platforms ===
@@ -45,21 +42,24 @@ function makePlatform(x, y, z) {
     const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
     const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
     world.addBody(body);
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
+    const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(4, 1, 4),
+        new THREE.MeshStandardMaterial({ color: 0x0000ff })
+    );
     mesh.position.copy(body.position);
     scene.add(mesh);
 }
-makePlatform(5,2,0);
-makePlatform(-5,4,-5);
-makePlatform(0,6,5);
-makePlatform(10,8,5);
-makePlatform(-10,10,0);
+makePlatform(5, 2, 0);
+makePlatform(-5, 4, -5);
+makePlatform(0, 6, 5);
+makePlatform(10, 8, 5);
+makePlatform(-10, 10, 0);
 
-// === Player Body ===
+// === Player Physics Body ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-const playerBody = new CANNON.Body({ mass:1, shape: playerShape, material });
-playerBody.position.set(0,2,0);
-playerBody.fixedRotation = true;
+const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
+playerBody.position.set(0, 2, 0);
+playerBody.fixedRotation = true; // prevent tipping over
 playerBody.updateMassProperties();
 world.addBody(playerBody);
 
@@ -74,78 +74,71 @@ rightHand.position.set(0.2, -0.4, -0.5);
 hands.add(leftHand);
 hands.add(rightHand);
 
-// === Legs & Feet as a separate body group (in front of camera) ===
-const bodyGroup = new THREE.Group();
-scene.add(bodyGroup); // will follow player position
-
+// === Legs & Feet Group (in front of camera, visible) ===
 const legsGroup = new THREE.Group();
-legsGroup.position.set(0, -1.5, -1); // lowered & in front
-bodyGroup.add(legsGroup);
+scene.add(legsGroup); // separate from camera to prevent clipping
 
-// Left leg
-const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:0x333333}));
-leftLeg.position.set(-0.15,0,0);
+// Leg positions relative to legsGroup
+const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+leftLeg.position.set(-0.15, -0.4, 0);
 legsGroup.add(leftLeg);
 
-// Right leg
-const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:0x333333}));
-rightLeg.position.set(0.15,0,0);
+const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+rightLeg.position.set(0.15, -0.4, 0);
 legsGroup.add(rightLeg);
 
-// Left foot
-const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.1,0.4), new THREE.MeshStandardMaterial({color:0x555555}));
-leftFoot.position.set(-0.15,-0.9,0.1);
+const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
+leftFoot.position.set(-0.15, -0.85, 0.1);
 legsGroup.add(leftFoot);
 
-// Right foot
-const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.1,0.4), new THREE.MeshStandardMaterial({color:0x555555}));
-rightFoot.position.set(0.15,-0.9,0.1);
+const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
+rightFoot.position.set(0.15, -0.85, 0.1);
 legsGroup.add(rightFoot);
 
 // === Input ===
-const keys = {w:false,a:false,s:false,d:false,jump:false};
-window.addEventListener("keydown",e=>{ if(e.code in keys) keys[e.code]=true; });
-window.addEventListener("keyup",e=>{ if(e.code in keys) keys[e.code]=false; });
+const keys = { w: false, a: false, s: false, d: false };
+window.addEventListener("keydown", e => { if(e.code in keys) keys[e.code] = true; });
+window.addEventListener("keyup", e => { if(e.code in keys) keys[e.code] = false; });
 
-// === Mouse Look ===
-let yaw=0,pitch=0;
-const sensitivity=0.002;
-document.body.addEventListener("click",()=>document.body.requestPointerLock());
-document.addEventListener("mousemove",e=>{
-    if(document.pointerLockElement===document.body){
-        yaw -= e.movementX*sensitivity;
-        pitch -= e.movementY*sensitivity;
+// === Mouse look ===
+let yaw = 0, pitch = 0;
+const sensitivity = 0.002;
+document.body.addEventListener("click", () => document.body.requestPointerLock());
+document.addEventListener("mousemove", e => {
+    if(document.pointerLockElement === document.body){
+        yaw -= e.movementX * sensitivity;
+        pitch -= e.movementY * sensitivity;
         pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
     }
 });
 
-// === Movement Settings ===
-const moveSpeed = 15, jumpSpeed = 9, damping=0.1;
+// === Movement ===
+const moveSpeed = 8;
+const jumpSpeed = 6;
 let canJump = false;
-playerBody.addEventListener("collide", e=>{ if(e.contact.ni.y>0.5) canJump=true; });
 
-// === Camera & Bobbing ===
-let bobTime=0,jumpOffset=0;
-function applyCameraBob(delta, moving){
-    bobTime += delta*(moving?6:2);
-    const bobOffset = moving?Math.sin(bobTime)*0.05:0;
-    const targetJumpOffset = -playerBody.velocity.y*0.02;
-    jumpOffset += (targetJumpOffset-jumpOffset)*0.1;
+playerBody.addEventListener("collide", e => {
+    if(e.contact.ni.y > 0.5) canJump = true;
+});
 
-    camera.position.y = 1.6 + bobOffset + jumpOffset;
+// === Camera & Legs Bob ===
+let bobTime = 0;
+function applyBobbing(delta, moving){
+    bobTime += delta * (moving?6:2);
+    const bob = moving?Math.sin(bobTime)*0.05:0;
 
-    hands.position.y = -0.4 + jumpOffset*1.5;
-    hands.rotation.x = moving?Math.sin(bobTime*1.5)*0.05 + jumpOffset*0.3 : jumpOffset*0.3;
-    hands.rotation.y = moving?Math.sin(bobTime)*0.1:0;
+    // Camera head bob
+    camera.position.y = 1.6 + bob;
 
-    if(moving){
-        leftLeg.rotation.x = Math.sin(bobTime*2)*0.3;
-        rightLeg.rotation.x = Math.sin(bobTime*2+Math.PI)*0.3;
-        leftFoot.rotation.x = Math.sin(bobTime*2+Math.PI)*0.2;
-        rightFoot.rotation.x = Math.sin(bobTime*2)*0.2;
-    }else{
-        leftLeg.rotation.x = rightLeg.rotation.x = leftFoot.rotation.x = rightFoot.rotation.x = 0;
-    }
+    // Hands bob
+    hands.position.y = -0.4 + bob;
+    hands.rotation.x = moving?Math.sin(bobTime*1.5)*0.05:0;
+
+    // Legs bob
+    leftLeg.rotation.x = moving?Math.sin(bobTime*2)*0.3:0;
+    rightLeg.rotation.x = moving?Math.sin(bobTime*2+Math.PI)*0.3:0;
+    leftFoot.rotation.x = moving?Math.sin(bobTime*2+Math.PI)*0.2:0;
+    rightFoot.rotation.x = moving?Math.sin(bobTime*2)*0.2:0;
 }
 
 // === Main Loop ===
@@ -153,42 +146,48 @@ const clock = new THREE.Clock();
 function animate(){
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(),0.05);
-    world.step(1/60, delta,3);
+
+    // Step physics
+    world.step(1/60, delta, 3);
 
     // Movement
-    const forward = new CANNON.Vec3(-Math.sin(yaw),0,-Math.cos(yaw));
-    const right = new CANNON.Vec3(Math.cos(yaw),0,-Math.sin(yaw));
+    const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
     const moveDir = new CANNON.Vec3(0,0,0);
-    if(keys.w) moveDir.vadd(forward,moveDir);
-    if(keys.s) moveDir.vsub(forward,moveDir);
-    if(keys.a) moveDir.vsub(right,moveDir);
-    if(keys.d) moveDir.vadd(right,moveDir);
+    if(keys.w) moveDir.vadd(forward, moveDir);
+    if(keys.s) moveDir.vsub(forward, moveDir);
+    if(keys.a) moveDir.vsub(right, moveDir);
+    if(keys.d) moveDir.vadd(right, moveDir);
     if(moveDir.length()>0) moveDir.normalize();
     const desired = moveDir.scale(moveSpeed);
-    playerBody.velocity.x += (desired.x-playerBody.velocity.x)*0.2;
-    playerBody.velocity.z += (desired.z-playerBody.velocity.z)*0.2;
+    playerBody.velocity.x += (desired.x - playerBody.velocity.x)*0.2;
+    playerBody.velocity.z += (desired.z - playerBody.velocity.z)*0.2;
 
-    if(keys.Space && canJump){ playerBody.velocity.y=jumpSpeed; canJump=false; }
+    // Jump (space key)
+    if(keys.Space && canJump){
+        playerBody.velocity.y = jumpSpeed;
+        canJump = false;
+    }
 
-    if(moveDir.length()===0){ playerBody.velocity.x*=(1-damping); playerBody.velocity.z*=(1-damping); }
+    // Update camera position
+    camera.position.copy(playerBody.position);
+    camera.position.y += 1.6; // head height
+    camera.rotation.x = pitch;
+    camera.rotation.y = yaw;
 
-    // Update camera
-    yawObject.position.copy(playerBody.position);
-    yawObject.position.y += 1.6;
-    yawObject.rotation.y = yaw;
-    pitchObject.rotation.x = pitch;
+    // Update legs group position in front of camera
+    legsGroup.position.copy(playerBody.position);
+    legsGroup.position.y += 0.5; // waist
+    legsGroup.position.z -= 0.5; // forward
+    legsGroup.rotation.y = yaw;
 
-    // Update body group (legs & feet)
-    bodyGroup.position.copy(playerBody.position);
-    bodyGroup.position.y += 0.5; // waist height
-    bodyGroup.rotation.y = yaw;
+    applyBobbing(delta, moveDir.length()>0);
 
-    applyCameraBob(delta, moveDir.length()>0);
-    renderer.render(scene,camera);
+    renderer.render(scene, camera);
 }
 animate();
 
-// === Window Resize ===
+// === Window resize ===
 window.addEventListener("resize", ()=>{
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();

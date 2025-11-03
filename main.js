@@ -1,77 +1,97 @@
+
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js';
+import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
+
+// --- Three.js scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0,5,10);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const light = new THREE.DirectionalLight(0xffffff,1);
+light.position.set(10,10,10);
+scene.add(light);
+
+// --- Cannon.js world ---
+const world = new CANNON.World({
+    gravity: new CANNON.Vec3(0,-9.82,0) // gravity
+});
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
-world.broadphase = new CANNON.NaiveBroadphase();
-world.allowSleep = true;
 
-// Physics materials
-const material = new CANNON.Material();
-world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction:0, restitution:0 });
-
-// === Ground ===
-const groundShape = new CANNON.Box(new CANNON.Vec3(10,0.5,10));
-const groundBody = new CANNON.Body({ mass:0, shape:groundShape });
-const groundBody = new CANNON.Body({ mass:0, shape: groundShape });
-world.addBody(groundBody);
-
-const groundMesh = new THREE.Mesh(
-@@ -96,15 +94,15 @@ window.addEventListener("keyup", e=>{
-  if(e.code==="Space") keys.jump=false;
+// --- Materials ---
+const defaultMaterial = new CANNON.Material('default');
+@@ -80,7 +78,7 @@
+    position:new CANNON.Vec3(0,1,0),
+    material: defaultMaterial
 });
+playerBody.fixedRotation = true;
+playerBody.fixedRotation = true; // prevents tipping over
+playerBody.updateMassProperties();
+world.addBody(playerBody);
 
-// === Mouse Look ===
-let yaw=0, pitch=0;
-// === Mouse Look (Horizontal Only) ===
-let yaw = 0;
-const sensitivity = 0.002;
-document.body.addEventListener("click",()=>document.body.requestPointerLock());
+@@ -114,46 +112,46 @@
+    const delta = clock.getDelta();
 
-document.body.addEventListener("click", ()=>document.body.requestPointerLock());
-document.addEventListener("mousemove", e=>{
-    if(document.pointerLockElement===document.body){
-    if(document.pointerLockElement === document.body){
-        yaw -= e.movementX * sensitivity;
-        pitch -= e.movementY * sensitivity;
-        pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
-        // pitch ignored for horizontal-only rotation
+    // Horizontal movement
+    const velocity = playerBody.velocity;
+    const speed = 5;
+    velocity.x = 0;
+    velocity.z = 0;
+    if(keys.w) velocity.z = -speed;
+    if(keys.s) velocity.z = speed;
+    if(keys.a) velocity.x = -speed;
+    if(keys.d) velocity.x = speed;
+    let moveX = 0;
+    let moveZ = 0;
+    if(keys.w) moveZ -= speed;
+    if(keys.s) moveZ += speed;
+    if(keys.a) moveX -= speed;
+    if(keys.d) moveX += speed;
+
+    // Apply horizontal velocity
+    playerBody.velocity.x = moveX;
+    playerBody.velocity.z = moveZ;
+
+    // Jumping
+    const groundTolerance = 0.1; // how close to ground to allow jump
+    if(keys.jump){
+        // Cast ray down to see if on ground
+        const ray = new CANNON.Ray(playerBody.position, new CANNON.Vec3(0,-1,0));
+        const result = new CANNON.RaycastResult();
+        ray.intersectWorld(world,{skipBackfaces:true},result);
+        if(result.hasHit && result.distance < 1.05){
+            playerBody.velocity.y = 7;
+        if(Math.abs(playerBody.velocity.y) < groundTolerance){
+            playerBody.velocity.y = 7; // jump strength
+        }
+        keys.jump=false;
     }
-});
 
-@@ -157,9 +155,9 @@ function animate(){
-    if(dir.length()>0) dir.normalize();
+    // Step physics
+    world.step(1/60, delta, 3);
 
-    const sin=Math.sin(yaw), cos=Math.cos(yaw);
-    const x=dir.x*cos - dir.z*sin;
-    const z=dir.x*sin + dir.z*cos;
-    dir.x=x; dir.z=z;
-    const x = dir.x*cos - dir.z*sin;
-    const z = dir.x*sin + dir.z*cos;
-    dir.x = x; dir.z = z;
-
-    const speed = grounded ? moveSpeed : airSpeed;
-    const vel = dir.scale(speed);
-@@ -170,7 +168,7 @@ function animate(){
-    if(keys.jump && grounded){
-        playerBody.velocity.y = jumpSpeed;
+    // Sync meshes
+    // Sync Three.js meshes
+    playerMesh.position.copy(playerBody.position);
+    playerMesh.quaternion.copy(playerBody.quaternion);
+    for(let i=0;i<platforms.length;i++){
+        platforms[i].position.copy(platformBodies[i].position);
+        platforms[i].quaternion.copy(platformBodies[i].quaternion);
     }
-    keys.jump=false;
-    keys.jump = false;
+    groundMesh.position.copy(groundBody.position);
+    groundMesh.quaternion.copy(groundBody.quaternion);
 
-    // Damping
-    if(grounded && dir.length()===0){
-@@ -180,15 +178,15 @@ function animate(){
-
-    // Camera follows player + apply bob/sway
-    applyCameraBob(delta, dir.length());
-    camera.rotation.set(pitch, yaw, 0);
-    camera.rotation.set(0, yaw, 0); // horizontal only
+    // Camera follow
+    camera.position.x = playerMesh.position.x;
+    camera.position.z = playerMesh.position.z + 10;
+    camera.position.y = playerMesh.position.y + 5;
+    camera.lookAt(playerMesh.position);
 
     renderer.render(scene,camera);
 }
-
 animate();
-
-// --- Window Resize ---
-window.addEventListener("resize",()=>{
-window.addEventListener("resize", ()=>{
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);

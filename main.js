@@ -1,122 +1,77 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
-import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
-
-// --- Scene ---
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-
-// --- Renderer ---
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// --- Camera ---
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-const playerYaw = new THREE.Object3D();
-playerYaw.add(camera);
-scene.add(playerYaw);
-camera.position.y = 1.6; // eye height
-
-// --- Light ---
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-dirLight.position.set(10,20,10);
-scene.add(dirLight);
-
-// --- Physics world ---
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
-const groundMaterial = new CANNON.Material("ground");
-const playerMaterial = new CANNON.Material("player");
-const contactMat = new CANNON.ContactMaterial(playerMaterial, groundMaterial, { friction:0.0, restitution:0 });
-world.addContactMaterial(contactMat);
-world.defaultContactMaterial = contactMat;
+world.broadphase = new CANNON.NaiveBroadphase();
+world.allowSleep = true;
 
-// --- Ground ---
-const groundShape = new CANNON.Plane();
-const groundBody = new CANNON.Body({ mass:0, material:groundMaterial });
-groundBody.addShape(groundShape);
-groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
+// Physics materials
+const material = new CANNON.Material();
+world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction:0, restitution:0 });
+
+// === Ground ===
+const groundShape = new CANNON.Box(new CANNON.Vec3(10,0.5,10));
+const groundBody = new CANNON.Body({ mass:0, shape:groundShape });
+const groundBody = new CANNON.Body({ mass:0, shape: groundShape });
 world.addBody(groundBody);
 
 const groundMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(50,50),
-  new THREE.MeshStandardMaterial({ color:0x228B22 })
-);
-groundMesh.rotation.x = -Math.PI/2;
-scene.add(groundMesh);
+@@ -96,15 +94,15 @@ window.addEventListener("keyup", e=>{
+  if(e.code==="Space") keys.jump=false;
+});
 
-// --- Player ---
-const playerShape = new CANNON.Sphere(1);
-const playerBody = new CANNON.Body({ mass:5, material:playerMaterial });
-playerBody.addShape(playerShape);
-playerBody.position.set(0,2,0);
-playerBody.linearDamping = 0.9;
-world.addBody(playerBody);
-
-// --- Input ---
-const keys = { w:false, a:false, s:false, d:false, space:false };
-window.addEventListener("keydown", e => { if(e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = true; });
-window.addEventListener("keyup", e => { if(e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = false; });
-
-// --- Mouse look ---
+// === Mouse Look ===
 let yaw=0, pitch=0;
+// === Mouse Look (Horizontal Only) ===
+let yaw = 0;
 const sensitivity = 0.002;
+document.body.addEventListener("click",()=>document.body.requestPointerLock());
+
 document.body.addEventListener("click", ()=>document.body.requestPointerLock());
 document.addEventListener("mousemove", e=>{
-  if(document.pointerLockElement===document.body){
-    yaw -= e.movementX * sensitivity;
-    pitch -= e.movementY * sensitivity;
-    pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01, pitch));
-  }
+    if(document.pointerLockElement===document.body){
+    if(document.pointerLockElement === document.body){
+        yaw -= e.movementX * sensitivity;
+        pitch -= e.movementY * sensitivity;
+        pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+        // pitch ignored for horizontal-only rotation
+    }
 });
 
-// --- Jump detection ---
-let canJump=false;
-playerBody.addEventListener("collide", e=>{
-  if(e.contact && e.contact.ni.y > 0.5) canJump=true;
-});
+@@ -157,9 +155,9 @@ function animate(){
+    if(dir.length()>0) dir.normalize();
 
-// --- Animate ---
-const clock = new THREE.Clock();
-function animate(){
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(),0.05);
+    const sin=Math.sin(yaw), cos=Math.cos(yaw);
+    const x=dir.x*cos - dir.z*sin;
+    const z=dir.x*sin + dir.z*cos;
+    dir.x=x; dir.z=z;
+    const x = dir.x*cos - dir.z*sin;
+    const z = dir.x*sin + dir.z*cos;
+    dir.x = x; dir.z = z;
 
-  // Step physics
-  world.step(1/60, dt, 3);
+    const speed = grounded ? moveSpeed : airSpeed;
+    const vel = dir.scale(speed);
+@@ -170,7 +168,7 @@ function animate(){
+    if(keys.jump && grounded){
+        playerBody.velocity.y = jumpSpeed;
+    }
+    keys.jump=false;
+    keys.jump = false;
 
-  // Movement
-  const forward = new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
-  const right = new THREE.Vector3(1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
-  const moveDir = new THREE.Vector3();
-  if(keys.w) moveDir.add(forward);
-  if(keys.s) moveDir.sub(forward);
-  if(keys.a) moveDir.sub(right);
-  if(keys.d) moveDir.add(right);
-  if(moveDir.lengthSq()>0) moveDir.normalize();
+    // Damping
+    if(grounded && dir.length()===0){
+@@ -180,15 +178,15 @@ function animate(){
 
-  const speed = 5;
-  playerBody.velocity.x += (moveDir.x*speed - playerBody.velocity.x)*0.2;
-  playerBody.velocity.z += (moveDir.z*speed - playerBody.velocity.z)*0.2;
+    // Camera follows player + apply bob/sway
+    applyCameraBob(delta, dir.length());
+    camera.rotation.set(pitch, yaw, 0);
+    camera.rotation.set(0, yaw, 0); // horizontal only
 
-  // Jump
-  if(keys.space && canJump){
-    playerBody.velocity.y = 6;
-    canJump = false;
-  }
-
-  // Camera follows
-  playerYaw.position.copy(playerBody.position);
-  camera.rotation.x = pitch;
-  playerYaw.rotation.y = yaw;
-
-  renderer.render(scene,camera);
+    renderer.render(scene,camera);
 }
+
 animate();
 
-// --- Resize ---
+// --- Window Resize ---
+window.addEventListener("resize",()=>{
 window.addEventListener("resize", ()=>{
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);

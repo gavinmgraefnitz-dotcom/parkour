@@ -9,7 +9,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// === Camera Setup (with yaw/pitch separation) ===
+// === Camera Setup (Yaw + Pitch separation to prevent tilt) ===
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const pitchObject = new THREE.Object3D();
 pitchObject.add(camera);
@@ -25,7 +25,10 @@ scene.add(light);
 // === Physics World ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
 const material = new CANNON.Material();
-world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction: 0, restitution: 0 });
+world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, {
+  friction: 0,
+  restitution: 0,
+});
 
 // === Ground ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
@@ -42,12 +45,21 @@ scene.add(groundMesh);
 // === Platforms ===
 function makePlatform(x, y, z) {
   const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape,
+    position: new CANNON.Vec3(x, y, z),
+    material,
+  });
   world.addBody(body);
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshStandardMaterial({ color: 0x0000ff }));
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 1, 4),
+    new THREE.MeshStandardMaterial({ color: 0x0000ff })
+  );
   mesh.position.copy(body.position);
   scene.add(mesh);
 }
+
 makePlatform(5, 2, 0);
 makePlatform(-5, 4, -5);
 makePlatform(0, 6, 5);
@@ -62,20 +74,24 @@ playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
 world.addBody(playerBody);
 
-// === Hands ===
+// === Hands (smaller, better positioned) ===
 const hands = new THREE.Group();
 camera.add(hands);
+
+const handMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+
 const leftHand = new THREE.Mesh(
-  new THREE.BoxGeometry(0.3, 0.8, 0.3),
-  new THREE.MeshStandardMaterial({ color: 0xffcc99 })
+  new THREE.BoxGeometry(0.15, 0.4, 0.15),
+  handMaterial
 );
-leftHand.position.set(-0.35, -0.5, -0.5);
+leftHand.position.set(-0.2, -0.4, -0.5);
 hands.add(leftHand);
+
 const rightHand = new THREE.Mesh(
-  new THREE.BoxGeometry(0.3, 0.8, 0.3),
-  new THREE.MeshStandardMaterial({ color: 0xffcc99 })
+  new THREE.BoxGeometry(0.15, 0.4, 0.15),
+  handMaterial
 );
-rightHand.position.set(0.35, -0.5, -0.5);
+rightHand.position.set(0.2, -0.4, -0.5);
 hands.add(rightHand);
 
 // === Input Handling ===
@@ -105,7 +121,7 @@ document.addEventListener("mousemove", (e) => {
   if (document.pointerLockElement === document.body) {
     yaw -= e.movementX * sensitivity;
     pitch -= e.movementY * sensitivity;
-    pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch)); // Clamp look
+    pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch)); // clamp look
   }
 });
 
@@ -126,13 +142,23 @@ function isGrounded() {
   return false;
 }
 
-// === Camera Bob ===
+// === Camera & Hand Bob (with jump/land bounce) ===
 let bobTime = 0;
+let jumpOffset = 0;
+
 function applyCameraBob(delta, moving) {
   bobTime += delta * (moving ? 6 : 2);
   const bobOffset = moving ? Math.sin(bobTime) * 0.05 : 0;
-  camera.position.y = 1.6 + bobOffset;
-  hands.rotation.x = moving ? Math.sin(bobTime * 1.5) * 0.05 : 0;
+
+  // Bounce hands & camera when jumping/falling
+  const targetJumpOffset = -playerBody.velocity.y * 0.02;
+  jumpOffset += (targetJumpOffset - jumpOffset) * 0.1;
+
+  camera.position.y = 1.6 + bobOffset + jumpOffset;
+  hands.position.y = -0.4 + jumpOffset * 1.5;
+  hands.rotation.x = moving
+    ? Math.sin(bobTime * 1.5) * 0.05 + jumpOffset * 0.3
+    : jumpOffset * 0.3;
   hands.rotation.y = moving ? Math.sin(bobTime) * 0.1 : 0;
 }
 
@@ -145,11 +171,11 @@ function animate() {
 
   const grounded = isGrounded();
 
-  // Update yaw/pitch objects
+  // Camera rotation objects
   yawObject.rotation.y = yaw;
   pitchObject.rotation.x = pitch;
 
-  // === Movement relative to yaw only ===
+  // Movement relative to camera yaw
   const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
   const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
 
@@ -175,9 +201,9 @@ function animate() {
     playerBody.velocity.z *= 1 - damping;
   }
 
-  // === Update Camera Position ===
+  // Camera follows player
   yawObject.position.copy(playerBody.position);
-  yawObject.position.y += 1.6; // eye height
+  yawObject.position.y += 1.6;
 
   applyCameraBob(delta, moveDir.length() > 0 && grounded);
 
@@ -186,7 +212,7 @@ function animate() {
 
 animate();
 
-// === Resize ===
+// === Resize Handling ===
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();

@@ -11,7 +11,6 @@ document.body.appendChild(renderer.domElement);
 
 // === Camera (player head) ===
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
-scene.add(camera);
 
 // === Lighting ===
 const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -59,9 +58,15 @@ makePlatform(-10, 10, 0);
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
 const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
 playerBody.position.set(0, 2, 0);
-playerBody.fixedRotation = true; // prevent tipping over
+playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
 world.addBody(playerBody);
+
+// === Player Yaw Object (for rotation) ===
+const playerYaw = new THREE.Object3D();
+scene.add(playerYaw);
+playerYaw.add(camera);
+camera.position.y = 1.6; // head height
 
 // === Hands ===
 const hands = new THREE.Group();
@@ -71,125 +76,112 @@ const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), handMate
 const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), handMaterial);
 leftHand.position.set(-0.2, -0.4, -0.5);
 rightHand.position.set(0.2, -0.4, -0.5);
-hands.add(leftHand);
-hands.add(rightHand);
+hands.add(leftHand, rightHand);
 
-// === Legs & Feet Group (in front of camera, visible) ===
+// === Legs & Feet ===
 const legsGroup = new THREE.Group();
-scene.add(legsGroup); // separate from camera to prevent clipping
+scene.add(legsGroup);
 
-// Leg positions relative to legsGroup
 const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
 leftLeg.position.set(-0.15, -0.4, 0);
-legsGroup.add(leftLeg);
-
 const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
 rightLeg.position.set(0.15, -0.4, 0);
-legsGroup.add(rightLeg);
-
 const leftFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
 leftFoot.position.set(-0.15, -0.85, 0.1);
-legsGroup.add(leftFoot);
-
 const rightFoot = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0x555555 }));
 rightFoot.position.set(0.15, -0.85, 0.1);
-legsGroup.add(rightFoot);
+legsGroup.add(leftLeg, rightLeg, leftFoot, rightFoot);
 
 // === Input ===
-const keys = { w: false, a: false, s: false, d: false };
-window.addEventListener("keydown", e => { if(e.code in keys) keys[e.code] = true; });
-window.addEventListener("keyup", e => { if(e.code in keys) keys[e.code] = false; });
+const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false, Space: false };
+window.addEventListener("keydown", e => { if (e.code in keys) keys[e.code] = true; });
+window.addEventListener("keyup", e => { if (e.code in keys) keys[e.code] = false; });
 
-// === Mouse look ===
+// === Mouse Look ===
 let yaw = 0, pitch = 0;
 const sensitivity = 0.002;
 document.body.addEventListener("click", () => document.body.requestPointerLock());
 document.addEventListener("mousemove", e => {
-    if(document.pointerLockElement === document.body){
+    if (document.pointerLockElement === document.body) {
         yaw -= e.movementX * sensitivity;
         pitch -= e.movementY * sensitivity;
-        pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+        pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
     }
 });
 
-// === Movement ===
+// === Movement & Jumping ===
 const moveSpeed = 8;
 const jumpSpeed = 6;
 let canJump = false;
 
 playerBody.addEventListener("collide", e => {
-    if(e.contact.ni.y > 0.5) canJump = true;
+    if (e.contact.ni.y > 0.5) canJump = true;
 });
 
 // === Camera & Legs Bob ===
 let bobTime = 0;
-function applyBobbing(delta, moving){
-    bobTime += delta * (moving?6:2);
-    const bob = moving?Math.sin(bobTime)*0.05:0;
+function applyBobbing(delta, moving) {
+    bobTime += delta * (moving ? 6 : 2);
+    const bob = moving ? Math.sin(bobTime) * 0.05 : 0;
 
-    // Camera head bob
     camera.position.y = 1.6 + bob;
-
-    // Hands bob
     hands.position.y = -0.4 + bob;
-    hands.rotation.x = moving?Math.sin(bobTime*1.5)*0.05:0;
+    hands.rotation.x = moving ? Math.sin(bobTime * 1.5) * 0.05 : 0;
 
-    // Legs bob
-    leftLeg.rotation.x = moving?Math.sin(bobTime*2)*0.3:0;
-    rightLeg.rotation.x = moving?Math.sin(bobTime*2+Math.PI)*0.3:0;
-    leftFoot.rotation.x = moving?Math.sin(bobTime*2+Math.PI)*0.2:0;
-    rightFoot.rotation.x = moving?Math.sin(bobTime*2)*0.2:0;
+    leftLeg.rotation.x = moving ? Math.sin(bobTime * 2) * 0.3 : 0;
+    rightLeg.rotation.x = moving ? Math.sin(bobTime * 2 + Math.PI) * 0.3 : 0;
+    leftFoot.rotation.x = moving ? Math.sin(bobTime * 2 + Math.PI) * 0.2 : 0;
+    rightFoot.rotation.x = moving ? Math.sin(bobTime * 2) * 0.2 : 0;
 }
 
-// === Main Loop ===
+// === Animate Loop ===
 const clock = new THREE.Clock();
-function animate(){
+function animate() {
     requestAnimationFrame(animate);
-    const delta = Math.min(clock.getDelta(),0.05);
+    const delta = Math.min(clock.getDelta(), 0.05);
 
-    // Step physics
-    world.step(1/60, delta, 3);
+    world.step(1 / 60, delta, 3);
 
-    // Movement
+    // --- Movement ---
     const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
     const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
-    const moveDir = new CANNON.Vec3(0,0,0);
-    if(keys.w) moveDir.vadd(forward, moveDir);
-    if(keys.s) moveDir.vsub(forward, moveDir);
-    if(keys.a) moveDir.vsub(right, moveDir);
-    if(keys.d) moveDir.vadd(right, moveDir);
-    if(moveDir.length()>0) moveDir.normalize();
-    const desired = moveDir.scale(moveSpeed);
-    playerBody.velocity.x += (desired.x - playerBody.velocity.x)*0.2;
-    playerBody.velocity.z += (desired.z - playerBody.velocity.z)*0.2;
+    const moveDir = new CANNON.Vec3(0, 0, 0);
+    if (keys.KeyW) moveDir.vadd(forward, moveDir);
+    if (keys.KeyS) moveDir.vsub(forward, moveDir);
+    if (keys.KeyA) moveDir.vsub(right, moveDir);
+    if (keys.KeyD) moveDir.vadd(right, moveDir);
 
-    // Jump (space key)
-    if(keys.Space && canJump){
+    if (moveDir.length() > 0) moveDir.normalize();
+    playerBody.velocity.x = moveDir.x * moveSpeed;
+    playerBody.velocity.z = moveDir.z * moveSpeed;
+
+    // --- Jump ---
+    if (keys.Space && canJump) {
         playerBody.velocity.y = jumpSpeed;
         canJump = false;
     }
 
-    // Update camera position
+    // --- Camera Position ---
     camera.position.copy(playerBody.position);
-    camera.position.y += 1.6; // head height
+    camera.position.y += 1.6;
     camera.rotation.x = pitch;
     camera.rotation.y = yaw;
 
-    // Update legs group position in front of camera
+    // --- Legs Position ---
     legsGroup.position.copy(playerBody.position);
-    legsGroup.position.y += 0.5; // waist
-    legsGroup.position.z -= 0.5; // forward
+    legsGroup.position.y += 0.5;
+    legsGroup.position.z -= 0.5;
     legsGroup.rotation.y = yaw;
 
-    applyBobbing(delta, moveDir.length()>0);
+    applyBobbing(delta, moveDir.length() > 0);
 
     renderer.render(scene, camera);
 }
 animate();
 
-// === Window resize ===
-window.addEventListener("resize", ()=>{
-    camera.aspect = window.innerWidth/window.innerHeight;
+// === Resize ===
+window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });

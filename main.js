@@ -1,153 +1,171 @@
-import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
-import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
+import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
-let camera, scene, renderer, controls;
-let world, playerBody, floorBody;
-let keys = {};
-let canJump = false;
-
-// Setup physics
-world = new CANNON.World();
-world.gravity.set(0, -9.82, 0);
-
-const groundMaterial = new CANNON.Material('ground');
-const playerMaterial = new CANNON.Material('player');
-
-const contactMaterial = new CANNON.ContactMaterial(groundMaterial, playerMaterial, {
-  friction: 0.0,
-  restitution: 0.0,
-});
-world.addContactMaterial(contactMaterial);
-
-// Setup scene
-scene = new THREE.Scene();
+// === Scene Setup ===
+const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 10, 5);
-scene.add(light);
+// === Camera ===
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.05,
+  1000
+);
+scene.add(camera);
 
-// Player body (invisible)
-const playerShape = new CANNON.Sphere(1);
-playerBody = new CANNON.Body({
-  mass: 5,
-  material: playerMaterial,
-  shape: playerShape,
-  position: new CANNON.Vec3(0, 5, 0),
+// === Lighting ===
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10, 20, 10);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+// === Physics World ===
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+const material = new CANNON.Material();
+world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, {
+  friction: 0.0,
+  restitution: 0,
 });
-playerBody.linearDamping = 0.9;
+
+// === Ground ===
+const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
+const groundBody = new CANNON.Body({ mass: 0, shape: groundShape, material });
+groundBody.position.set(0, -0.5, 0);
+world.addBody(groundBody);
+
+const groundMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(20, 1, 20),
+  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+);
+groundMesh.position.copy(groundBody.position);
+scene.add(groundMesh);
+
+// === Platforms ===
+function makePlatform(x, y, z) {
+  const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape,
+    position: new CANNON.Vec3(x, y, z),
+    material,
+  });
+  world.addBody(body);
+
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 1, 4),
+    new THREE.MeshStandardMaterial({ color: 0x0000ff })
+  );
+  mesh.position.copy(body.position);
+  scene.add(mesh);
+}
+makePlatform(5, 2, 0);
+makePlatform(-5, 4, -5);
+makePlatform(0, 6, 5);
+makePlatform(10, 8, 5);
+makePlatform(-10, 10, 0);
+
+// === Player Body ===
+const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
+const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
+playerBody.position.set(0, 2, 0);
+playerBody.fixedRotation = true;
+playerBody.updateMassProperties();
 world.addBody(playerBody);
 
-// Ground
-const floorShape = new CANNON.Plane();
-floorBody = new CANNON.Body({
-  mass: 0,
-  material: groundMaterial,
-});
-floorBody.addShape(floorShape);
-floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(floorBody);
-
-const floorMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(100, 100),
-  new THREE.MeshLambertMaterial({ color: 0x228B22 })
+// === Hands ===
+const hands = new THREE.Group();
+camera.add(hands);
+const handMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+const leftHand = new THREE.Mesh(
+  new THREE.BoxGeometry(0.15, 0.4, 0.15),
+  handMaterial
 );
-floorMesh.rotation.x = -Math.PI / 2;
-scene.add(floorMesh);
+const rightHand = new THREE.Mesh(
+  new THREE.BoxGeometry(0.15, 0.4, 0.15),
+  handMaterial
+);
+leftHand.position.set(-0.2, -0.4, -0.5);
+rightHand.position.set(0.2, -0.4, -0.5);
+hands.add(leftHand);
+hands.add(rightHand);
 
-// Platforms
-const platformGeometry = new THREE.BoxGeometry(5, 0.5, 5);
-const platformMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-const platformMesh = new THREE.Mesh(platformGeometry, platformMaterial);
-platformMesh.position.set(0, 3, -10);
-scene.add(platformMesh);
-
-const platformBody = new CANNON.Body({
-  mass: 0,
-  material: groundMaterial,
-  shape: new CANNON.Box(new CANNON.Vec3(2.5, 0.25, 2.5)),
-  position: new CANNON.Vec3(0, 3, -10),
+// === Input ===
+const keys = { w: false, a: false, s: false, d: false, space: false };
+window.addEventListener("keydown", (e) => {
+  if (e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = true;
 });
-world.addBody(platformBody);
-
-// Controls
-controls = new PointerLockControls(camera, document.body);
-document.addEventListener('click', () => {
-  controls.lock();
+window.addEventListener("keyup", (e) => {
+  if (e.code.toLowerCase() in keys) keys[e.code.toLowerCase()] = false;
 });
 
-document.addEventListener('keydown', (event) => {
-  keys[event.code] = true;
-});
-
-document.addEventListener('keyup', (event) => {
-  keys[event.code] = false;
-});
-
-// Detect ground contact
-playerBody.addEventListener('collide', (e) => {
-  if (Math.abs(e.contact.ni.y) > 0.5) {
-    canJump = true;
+// === Mouse Look ===
+let yaw = 0,
+  pitch = 0;
+const sensitivity = 0.002;
+document.body.addEventListener("click", () =>
+  document.body.requestPointerLock()
+);
+document.addEventListener("mousemove", (e) => {
+  if (document.pointerLockElement === document.body) {
+    yaw -= e.movementX * sensitivity;
+    pitch -= e.movementY * sensitivity;
+    pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
   }
 });
 
-function movePlayer() {
-  const velocity = playerBody.velocity;
-  const speed = 5; // ← Normal walking speed
+// === Movement ===
+const moveSpeed = 6;
+const jumpSpeed = 6;
+let canJump = false;
 
-  let forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
-  forward.y = 0;
-  forward.normalize();
+playerBody.addEventListener("collide", (e) => {
+  if (e.contact.ni.y > 0.5) canJump = true;
+});
 
-  let right = new THREE.Vector3();
-  right.crossVectors(forward, camera.up).normalize();
-
-  if (keys['KeyW']) {
-    velocity.x += forward.x * speed * 0.1;
-    velocity.z += forward.z * speed * 0.1;
-  }
-  if (keys['KeyS']) {
-    velocity.x -= forward.x * speed * 0.1;
-    velocity.z -= forward.z * speed * 0.1;
-  }
-  if (keys['KeyA']) {
-    velocity.x -= right.x * speed * 0.1;
-    velocity.z -= right.z * speed * 0.1;
-  }
-  if (keys['KeyD']) {
-    velocity.x += right.x * speed * 0.1;
-    velocity.z += right.z * speed * 0.1;
-  }
-
-  if (keys['Space'] && canJump) {
-    velocity.y = 6; // jump strength
-    canJump = false;
-  }
-}
-
+// === Animate ===
+const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.05);
 
-  movePlayer();
-  world.step(1 / 60);
+  world.step(1 / 60, delta, 3);
 
+  const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const moveDir = new CANNON.Vec3(0, 0, 0);
+
+  if (keys.w) moveDir.vadd(forward, moveDir);
+  if (keys.s) moveDir.vsub(forward, moveDir);
+  if (keys.a) moveDir.vsub(right, moveDir);
+  if (keys.d) moveDir.vadd(right, moveDir);
+  if (moveDir.length() > 0) moveDir.normalize();
+
+  const desired = moveDir.scale(moveSpeed);
+  playerBody.velocity.x += (desired.x - playerBody.velocity.x) * 0.2;
+  playerBody.velocity.z += (desired.z - playerBody.velocity.z) * 0.2;
+
+  // Jump
+  if (keys.space && canJump) {
+    playerBody.velocity.y = jumpSpeed;
+    canJump = false;
+  }
+
+  // Camera follow
   camera.position.copy(playerBody.position);
-  camera.position.y += 1.6; // height of the eyes
+  camera.position.y += 1.6;
+  camera.rotation.set(pitch, yaw, 0);
 
   renderer.render(scene, camera);
 }
-
 animate();
 
-window.addEventListener('resize', () => {
+// === Resize ===
+window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);

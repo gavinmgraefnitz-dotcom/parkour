@@ -18,7 +18,7 @@ light.position.set(10, 20, 10);
 scene.add(light);
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
-// === Physics ===
+// === Physics World ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
 const material = new CANNON.Material();
 world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction: 0, restitution: 0 });
@@ -54,19 +54,20 @@ makePlatform(0, 6, 5);
 makePlatform(10, 8, 5);
 makePlatform(-10, 10, 0);
 
-// === Player Physics Body ===
+// === Player Body ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
 const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
 playerBody.position.set(0, 2, 0);
 playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
+playerBody.linearDamping = 0; // No damping for smooth movement
 world.addBody(playerBody);
 
-// === Player Yaw Object (for rotation) ===
+// === Player Yaw Object ===
 const playerYaw = new THREE.Object3D();
 scene.add(playerYaw);
 playerYaw.add(camera);
-camera.position.y = 1.6; // head height
+camera.position.y = 1.6;
 
 // === Hands ===
 const hands = new THREE.Group();
@@ -81,7 +82,6 @@ hands.add(leftHand, rightHand);
 // === Legs & Feet ===
 const legsGroup = new THREE.Group();
 scene.add(legsGroup);
-
 const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
 leftLeg.position.set(-0.15, -0.4, 0);
 const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
@@ -109,25 +109,20 @@ document.addEventListener("mousemove", e => {
     }
 });
 
-// === Movement & Jumping ===
-const moveSpeed = 8;
-const jumpSpeed = 6;
+// === Jump Detection ===
 let canJump = false;
-
 playerBody.addEventListener("collide", e => {
     if (e.contact.ni.y > 0.5) canJump = true;
 });
 
-// === Camera & Legs Bob ===
+// === Camera & Legs Bobbing ===
 let bobTime = 0;
 function applyBobbing(delta, moving) {
     bobTime += delta * (moving ? 6 : 2);
     const bob = moving ? Math.sin(bobTime) * 0.05 : 0;
-
     camera.position.y = 1.6 + bob;
     hands.position.y = -0.4 + bob;
     hands.rotation.x = moving ? Math.sin(bobTime * 1.5) * 0.05 : 0;
-
     leftLeg.rotation.x = moving ? Math.sin(bobTime * 2) * 0.3 : 0;
     rightLeg.rotation.x = moving ? Math.sin(bobTime * 2 + Math.PI) * 0.3 : 0;
     leftFoot.rotation.x = moving ? Math.sin(bobTime * 2 + Math.PI) * 0.2 : 0;
@@ -140,46 +135,52 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.05);
 
+    // Physics step
     world.step(1 / 60, delta, 3);
 
     // --- Movement ---
     const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
     const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
     const moveDir = new CANNON.Vec3(0, 0, 0);
+
     if (keys.KeyW) moveDir.vadd(forward, moveDir);
     if (keys.KeyS) moveDir.vsub(forward, moveDir);
     if (keys.KeyA) moveDir.vsub(right, moveDir);
     if (keys.KeyD) moveDir.vadd(right, moveDir);
 
     if (moveDir.length() > 0) moveDir.normalize();
+
+    // Apply velocity properly
+    const moveSpeed = 8;
     playerBody.velocity.x = moveDir.x * moveSpeed;
     playerBody.velocity.z = moveDir.z * moveSpeed;
 
     // --- Jump ---
     if (keys.Space && canJump) {
-        playerBody.velocity.y = jumpSpeed;
+        playerBody.velocity.y = 6;
         canJump = false;
     }
 
-    // --- Camera Position ---
+    // --- Camera position & rotation ---
     camera.position.copy(playerBody.position);
     camera.position.y += 1.6;
     camera.rotation.x = pitch;
     camera.rotation.y = yaw;
 
-    // --- Legs Position ---
+    // --- Legs position ---
     legsGroup.position.copy(playerBody.position);
     legsGroup.position.y += 0.5;
     legsGroup.position.z -= 0.5;
     legsGroup.rotation.y = yaw;
 
+    // Apply bobbing
     applyBobbing(delta, moveDir.length() > 0);
 
     renderer.render(scene, camera);
 }
 animate();
 
-// === Resize ===
+// === Window Resize ===
 window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();

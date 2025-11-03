@@ -20,12 +20,20 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
 // === Physics World ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
-const material = new CANNON.Material();
-world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, { friction: 0, restitution: 0 });
+
+// Materials
+const playerMaterial = new CANNON.Material();
+const groundMaterial = new CANNON.Material();
+const contactMat = new CANNON.ContactMaterial(playerMaterial, groundMaterial, {
+    friction: 0.0,      // VERY low friction
+    restitution: 0
+});
+world.addContactMaterial(contactMat);
+world.defaultContactMaterial = contactMat;
 
 // === Ground ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-const groundBody = new CANNON.Body({ mass: 0, shape: groundShape, material });
+const groundBody = new CANNON.Body({ mass: 0, shape: groundShape, material: groundMaterial });
 groundBody.position.set(0, -0.5, 0);
 world.addBody(groundBody);
 
@@ -39,7 +47,7 @@ scene.add(groundMesh);
 // === Platforms ===
 function makePlatform(x, y, z) {
     const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-    const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material });
+    const body = new CANNON.Body({ type: CANNON.Body.STATIC, shape, position: new CANNON.Vec3(x, y, z), material: groundMaterial });
     world.addBody(body);
     const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(4, 1, 4),
@@ -56,11 +64,12 @@ makePlatform(-10, 10, 0);
 
 // === Player Body ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
+const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material: playerMaterial });
 playerBody.position.set(0, 2, 0);
 playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
-playerBody.linearDamping = 0; // No damping for smooth movement
+playerBody.linearDamping = 0;   // no damping
+playerBody.angularDamping = 0;  // no rotation damping
 world.addBody(playerBody);
 
 // === Player Yaw Object ===
@@ -150,8 +159,8 @@ function animate() {
 
     if (moveDir.length() > 0) moveDir.normalize();
 
-    // Apply velocity properly
-    const moveSpeed = 8;
+    // Apply velocity with low friction
+    const moveSpeed = 10; // faster speed
     playerBody.velocity.x = moveDir.x * moveSpeed;
     playerBody.velocity.z = moveDir.z * moveSpeed;
 

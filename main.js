@@ -95,23 +95,14 @@ window.addEventListener("keyup", (e) => {
 let yaw = 0;
 let pitch = 0;
 const sensitivity = 0.002;
-let verticalEnabled = false;
 
 document.body.addEventListener("click", () => document.body.requestPointerLock());
-window.addEventListener("mousedown", (e) => {
-  if (e.button === 2) verticalEnabled = true;
-});
-window.addEventListener("mouseup", (e) => {
-  if (e.button === 2) verticalEnabled = false;
-});
 
 document.addEventListener("mousemove", (e) => {
   if (document.pointerLockElement === document.body) {
     yaw -= e.movementX * sensitivity;
-    if (verticalEnabled) {
-      pitch -= e.movementY * sensitivity;
-      pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
-    }
+    pitch -= e.movementY * sensitivity;
+    pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch)); // clamp up/down look
   }
 });
 
@@ -184,7 +175,7 @@ function animate() {
   // Camera follow
   camera.position.x = playerBody.position.x;
   camera.position.z = playerBody.position.z;
-  camera.rotation.set(verticalEnabled ? pitch : 0, yaw, 0);
+  camera.rotation.set(pitch, yaw, 0); // no roll (z = 0)
 
   // Camera bob + hands sway
   applyCameraBob(delta, moveDir.length() > 0 && grounded);

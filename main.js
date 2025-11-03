@@ -1,22 +1,25 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
 import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
-// === Setup scene ===
+// === Scene Setup ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+// === Camera ===
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+scene.add(camera);
 
 // === Lighting ===
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 20, 10);
 scene.add(light);
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
-// === Physics world ===
+// === Physics ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
 const material = new CANNON.Material();
 world.defaultContactMaterial = new CANNON.ContactMaterial(material, material, {
@@ -32,7 +35,7 @@ world.addBody(groundBody);
 
 const groundMesh = new THREE.Mesh(
   new THREE.BoxGeometry(20, 1, 20),
-  new THREE.MeshStandardMaterial({ color: 0x00aa00 })
+  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
 );
 groundMesh.position.copy(groundBody.position);
 scene.add(groundMesh);
@@ -40,7 +43,12 @@ scene.add(groundMesh);
 // === Platforms ===
 function makePlatform(x, y, z) {
   const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({ mass: 0, shape, position: new CANNON.Vec3(x, y, z), material });
+  const body = new CANNON.Body({
+    type: CANNON.Body.STATIC,
+    shape,
+    position: new CANNON.Vec3(x, y, z),
+    material
+  });
   world.addBody(body);
 
   const mesh = new THREE.Mesh(
@@ -50,18 +58,30 @@ function makePlatform(x, y, z) {
   mesh.position.copy(body.position);
   scene.add(mesh);
 }
-
 makePlatform(5, 2, 0);
 makePlatform(-5, 4, -5);
 makePlatform(0, 6, 5);
+makePlatform(10, 8, 5);
+makePlatform(-10, 10, 0);
 
-// === Player ===
+// === Player Physics Body ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
 const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material });
 playerBody.position.set(0, 2, 0);
 playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
 world.addBody(playerBody);
+
+// === Hands ===
+const hands = new THREE.Group();
+camera.add(hands);
+const handMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), handMaterial);
+const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), handMaterial);
+leftHand.position.set(-0.2, -0.4, -0.5);
+rightHand.position.set(0.2, -0.4, -0.5);
+hands.add(leftHand);
+hands.add(rightHand);
 
 // === Input ===
 const keys = { w: false, a: false, s: false, d: false, Space: false };
@@ -81,7 +101,7 @@ document.addEventListener("mousemove", e => {
 });
 
 // === Movement ===
-const moveSpeed = 4;  // slower speed
+const moveSpeed = 8;
 const jumpSpeed = 6;
 let canJump = false;
 
@@ -89,45 +109,58 @@ playerBody.addEventListener("collide", e => {
   if (e.contact.ni.y > 0.5) canJump = true;
 });
 
-// === Animation Loop ===
+// === Camera Bob ===
+let bobTime = 0;
+function applyBobbing(delta, moving) {
+  bobTime += delta * (moving ? 6 : 2);
+  const bob = moving ? Math.sin(bobTime) * 0.05 : 0;
+
+  // Camera head bob
+  camera.position.y = 1.6 + bob;
+
+  // Hands bob
+  hands.position.y = -0.4 + bob;
+  hands.rotation.x = moving ? Math.sin(bobTime * 1.5) * 0.05 : 0;
+}
+
+// === Main Loop ===
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
 
+  // Step physics
   world.step(1 / 60, delta, 3);
 
-  // Movement vector
+  // Movement
   const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
   const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
   const moveDir = new CANNON.Vec3(0, 0, 0);
-
   if (keys.w) moveDir.vadd(forward, moveDir);
   if (keys.s) moveDir.vsub(forward, moveDir);
   if (keys.a) moveDir.vsub(right, moveDir);
   if (keys.d) moveDir.vadd(right, moveDir);
-
   if (moveDir.length() > 0) moveDir.normalize();
-  const desiredVel = moveDir.scale(moveSpeed);
+  const desired = moveDir.scale(moveSpeed);
+  playerBody.velocity.x += (desired.x - playerBody.velocity.x) * 0.2;
+  playerBody.velocity.z += (desired.z - playerBody.velocity.z) * 0.2;
 
-  playerBody.velocity.x += (desiredVel.x - playerBody.velocity.x) * 0.2;
-  playerBody.velocity.z += (desiredVel.z - playerBody.velocity.z) * 0.2;
-
+  // Jump
   if (keys.Space && canJump) {
     playerBody.velocity.y = jumpSpeed;
     canJump = false;
   }
 
-  // === Camera follow ===
-  camera.position.set(playerBody.position.x, playerBody.position.y + 1.6, playerBody.position.z);
-  camera.rotation.order = "YXZ";   // Yaw-Pitch-Roll order
-  camera.rotation.y = yaw;
+  // Update camera position and rotation
+  camera.position.copy(playerBody.position);
+  camera.position.y += 1.6;
   camera.rotation.x = pitch;
-  camera.rotation.z = 0; // lock roll (no tilt)
+  camera.rotation.y = yaw;
+
+  applyBobbing(delta, moveDir.length() > 0);
 
   renderer.render(scene, camera);
 }
-
 animate();
 
 // === Resize ===

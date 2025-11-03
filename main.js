@@ -1,135 +1,90 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js";
 import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
-// === Scene ===
+// === Setup Scene ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
+// === Renderer ===
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // === Camera ===
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
 // === Lighting ===
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(10, 20, 10);
-scene.add(light);
-scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+dirLight.position.set(10, 10, 5);
+scene.add(dirLight);
 
-// === Physics World ===
+// === Physics ===
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
-world.broadphase = new CANNON.NaiveBroadphase();
-world.solver.iterations = 10;
 
 // Materials
-const playerMaterial = new CANNON.Material();
-const groundMaterial = new CANNON.Material();
-const contactMat = new CANNON.ContactMaterial(playerMaterial, groundMaterial, {
-  friction: 0.0,
-  restitution: 0
-});
-world.addContactMaterial(contactMat);
-world.defaultContactMaterial = contactMat;
+const playerMat = new CANNON.Material();
+const groundMat = new CANNON.Material();
+world.addContactMaterial(new CANNON.ContactMaterial(playerMat, groundMat, { friction: 0, restitution: 0 }));
 
 // === Ground ===
 const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-const groundBody = new CANNON.Body({ mass: 0, shape: groundShape, material: groundMaterial });
+const groundBody = new CANNON.Body({ mass: 0, shape: groundShape, material: groundMat });
 groundBody.position.set(0, -0.5, 0);
 world.addBody(groundBody);
 
 const groundMesh = new THREE.Mesh(
   new THREE.BoxGeometry(20, 1, 20),
-  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+  new THREE.MeshStandardMaterial({ color: 0x228B22 })
 );
 groundMesh.position.copy(groundBody.position);
 scene.add(groundMesh);
 
 // === Platforms ===
-function makePlatform(x, y, z) {
-  const shape = new CANNON.Box(new CANNON.Vec3(2, 0.5, 2));
-  const body = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape,
-    position: new CANNON.Vec3(x, y, z),
-    material: groundMaterial
-  });
+function addPlatform(x, y, z) {
+  const shape = new CANNON.Box(new CANNON.Vec3(2, 0.25, 2));
+  const body = new CANNON.Body({ mass: 0, shape, material: groundMat });
+  body.position.set(x, y, z);
   world.addBody(body);
 
   const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(4, 1, 4),
+    new THREE.BoxGeometry(4, 0.5, 4),
     new THREE.MeshStandardMaterial({ color: 0x0000ff })
   );
   mesh.position.copy(body.position);
   scene.add(mesh);
 }
-makePlatform(5, 2, 0);
-makePlatform(-5, 4, -5);
-makePlatform(0, 6, 5);
-makePlatform(10, 8, 5);
-makePlatform(-10, 10, 0);
+addPlatform(5, 2, 0);
+addPlatform(-5, 4, -5);
+addPlatform(0, 6, 5);
 
 // === Player ===
 const playerShape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material: playerMaterial });
+const playerBody = new CANNON.Body({ mass: 1, shape: playerShape, material: playerMat });
 playerBody.position.set(0, 2, 0);
 playerBody.fixedRotation = true;
-playerBody.updateMassProperties();
-playerBody.linearDamping = 0.2;
-playerBody.angularDamping = 1;
 world.addBody(playerBody);
 
-// === Hands ===
+// === Hands (visual only) ===
 const hands = new THREE.Group();
 camera.add(hands);
 const handMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
-const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), handMat);
-const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), handMat);
-leftHand.position.set(-0.2, -0.4, -0.5);
-rightHand.position.set(0.2, -0.4, -0.5);
+const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), handMat);
+const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), handMat);
+leftHand.position.set(-0.2, -0.3, -0.5);
+rightHand.position.set(0.2, -0.3, -0.5);
 hands.add(leftHand, rightHand);
 
-// === Legs & Feet ===
-const legsGroup = new THREE.Group();
-scene.add(legsGroup);
-const leftLeg = new THREE.Mesh(
-  new THREE.BoxGeometry(0.2, 0.8, 0.2),
-  new THREE.MeshStandardMaterial({ color: 0x333333 })
-);
-leftLeg.position.set(-0.15, -0.4, 0);
-const rightLeg = new THREE.Mesh(
-  new THREE.BoxGeometry(0.2, 0.8, 0.2),
-  new THREE.MeshStandardMaterial({ color: 0x333333 })
-);
-rightLeg.position.set(0.15, -0.4, 0);
-const leftFoot = new THREE.Mesh(
-  new THREE.BoxGeometry(0.25, 0.1, 0.4),
-  new THREE.MeshStandardMaterial({ color: 0x555555 })
-);
-leftFoot.position.set(-0.15, -0.85, 0.1);
-const rightFoot = new THREE.Mesh(
-  new THREE.BoxGeometry(0.25, 0.1, 0.4),
-  new THREE.MeshStandardMaterial({ color: 0x555555 })
-);
-rightFoot.position.set(0.15, -0.85, 0.1);
-legsGroup.add(leftLeg, rightLeg, leftFoot, rightFoot);
-
 // === Input ===
-const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false, Space: false };
-window.addEventListener("keydown", (e) => {
-  if (e.code in keys) keys[e.code] = true;
-});
-window.addEventListener("keyup", (e) => {
-  if (e.code in keys) keys[e.code] = false;
-});
+const keys = { w: false, a: false, s: false, d: false, space: false };
+window.addEventListener("keydown", e => { if (e.key in keys) keys[e.key] = true; });
+window.addEventListener("keyup", e => { if (e.key in keys) keys[e.key] = false; });
 
 // === Mouse Look ===
-let yaw = 0,
-  pitch = 0;
+let yaw = 0, pitch = 0;
 const sensitivity = 0.002;
 document.body.addEventListener("click", () => document.body.requestPointerLock());
-document.addEventListener("mousemove", (e) => {
+document.addEventListener("mousemove", e => {
   if (document.pointerLockElement === document.body) {
     yaw -= e.movementX * sensitivity;
     pitch -= e.movementY * sensitivity;
@@ -139,32 +94,15 @@ document.addEventListener("mousemove", (e) => {
 
 // === Jump Detection ===
 let canJump = false;
-playerBody.addEventListener("collide", (e) => {
+playerBody.addEventListener("collide", e => {
   if (e.contact.ni.y > 0.5) canJump = true;
 });
 
-// === Bobbing ===
-let bobTime = 0;
-function applyBobbing(delta, moving) {
-  bobTime += delta * (moving ? 6 : 2);
-  const bob = moving ? Math.sin(bobTime) * 0.05 : 0;
+// === Movement Settings ===
+const moveSpeed = 100; // reduced from 200
+const jumpPower = 6;
 
-  camera.position.set(
-    playerBody.position.x,
-    playerBody.position.y + 1.6 + bob,
-    playerBody.position.z
-  );
-
-  hands.position.y = -0.4 + bob;
-  hands.rotation.x = moving ? Math.sin(bobTime * 1.5) * 0.05 : 0;
-
-  leftLeg.rotation.x = moving ? Math.sin(bobTime * 2) * 0.3 : 0;
-  rightLeg.rotation.x = moving ? Math.sin(bobTime * 2 + Math.PI) * 0.3 : 0;
-  leftFoot.rotation.x = moving ? Math.sin(bobTime * 2 + Math.PI) * 0.2 : 0;
-  rightFoot.rotation.x = moving ? Math.sin(bobTime * 2) * 0.2 : 0;
-}
-
-// === Animate ===
+// === Animation Loop ===
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
@@ -175,33 +113,26 @@ function animate() {
   const forward = new CANNON.Vec3(-Math.sin(yaw), 0, -Math.cos(yaw));
   const right = new CANNON.Vec3(Math.cos(yaw), 0, -Math.sin(yaw));
   const moveDir = new CANNON.Vec3(0, 0, 0);
-  if (keys.KeyW) moveDir.vadd(forward, moveDir);
-  if (keys.KeyS) moveDir.vsub(forward, moveDir);
-  if (keys.KeyA) moveDir.vsub(right, moveDir);
-  if (keys.KeyD) moveDir.vadd(right, moveDir);
-
+  if (keys.w) moveDir.vadd(forward, moveDir);
+  if (keys.s) moveDir.vsub(forward, moveDir);
+  if (keys.a) moveDir.vsub(right, moveDir);
+  if (keys.d) moveDir.vadd(right, moveDir);
   if (moveDir.length() > 0) {
     moveDir.normalize();
-    const moveForce = moveDir.scale(80); // slower speed
-    playerBody.applyForce(moveForce, playerBody.position);
+    playerBody.applyForce(moveDir.scale(moveSpeed), playerBody.position);
   }
 
   // --- Jump ---
-  if (keys.Space && canJump) {
-    playerBody.velocity.y = 6;
+  if (keys.space && canJump) {
+    playerBody.velocity.y = jumpPower;
     canJump = false;
   }
 
-  // --- Camera rotation ---
+  // --- Camera ---
   camera.rotation.set(pitch, yaw, 0); // lock roll to 0
+  camera.position.copy(playerBody.position);
+  camera.position.y += 1.6; // camera height follows player
 
-  // --- Legs ---
-  legsGroup.position.copy(playerBody.position);
-  legsGroup.position.y += 0.5;
-  legsGroup.position.z -= 0.5;
-  legsGroup.rotation.y = yaw;
-
-  applyBobbing(delta, moveDir.length() > 0);
   renderer.render(scene, camera);
 }
 animate();

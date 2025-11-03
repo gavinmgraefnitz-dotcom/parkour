@@ -123,7 +123,7 @@ let bobTime=0;
 function applyBobbing(delta, moving){
     bobTime += delta*(moving?6:2);
     const bob = moving?Math.sin(bobTime)*0.05:0;
-    camera.position.y = 1.6 + bob;
+    camera.position.y = playerBody.position.y + 1.6 + bob; // camera follows player vertically
     hands.position.y = -0.4 + bob;
     hands.rotation.x = moving?Math.sin(bobTime*1.5)*0.05:0;
     leftLeg.rotation.x = moving?Math.sin(bobTime*2)*0.3:0;
@@ -163,12 +163,11 @@ function animate(){
         canJump = false;
     }
 
-    // --- Camera & Legs ---
-    camera.position.copy(playerBody.position);
-    camera.position.y += 1.6;
+    // --- Camera rotation ---
     camera.rotation.x = pitch;
     camera.rotation.y = yaw;
 
+    // --- Legs ---
     legsGroup.position.copy(playerBody.position);
     legsGroup.position.y += 0.5;
     legsGroup.position.z -= 0.5;

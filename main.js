@@ -63,7 +63,7 @@ playerBody.fixedRotation = true;
 playerBody.updateMassProperties();
 world.addBody(playerBody);
 
-// === Hands ===
+// === Hands (kept for reference) ===
 const hands = new THREE.Group();
 camera.add(hands);
 const handMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
@@ -79,7 +79,7 @@ const keys = { w: false, a: false, s: false, d: false, Space: false };
 window.addEventListener("keydown", e => { if (e.code in keys) keys[e.code] = true; });
 window.addEventListener("keyup", e => { if (e.code in keys) keys[e.code] = false; });
 
-// === Mouse look ===
+// === Mouse Look ===
 let yaw = 0, pitch = 0;
 const sensitivity = 0.002;
 document.body.addEventListener("click", () => document.body.requestPointerLock());
@@ -92,7 +92,7 @@ document.addEventListener("mousemove", e => {
 });
 
 // === Movement ===
-const moveSpeed = 8;
+const moveSpeed = 4; // ↓ reduced from 8 to half
 const jumpSpeed = 6;
 let canJump = false;
 
@@ -118,8 +118,8 @@ function animate() {
     if (keys.d) moveDir.vadd(right, moveDir);
     if (moveDir.length() > 0) moveDir.normalize();
     const desired = moveDir.scale(moveSpeed);
-    playerBody.velocity.x += (desired.x - playerBody.velocity.x) * 0.2;
-    playerBody.velocity.z += (desired.z - playerBody.velocity.z) * 0.2;
+    playerBody.velocity.x += (desired.x - playerBody.velocity.x) * 0.3;
+    playerBody.velocity.z += (desired.z - playerBody.velocity.z) * 0.3;
 
     // Jump
     if (keys.Space && canJump) {
@@ -127,10 +127,12 @@ function animate() {
         canJump = false;
     }
 
-    // === Camera follows player ===
-    camera.position.copy(playerBody.position);
-    camera.position.y += 1.6; // follows player's jump height
-    camera.rotation.set(pitch, yaw, 0); // no roll (tilt removed)
+    // === Camera follows player and has no roll ===
+    camera.position.set(playerBody.position.x, playerBody.position.y + 1.6, playerBody.position.z);
+    camera.rotation.order = "YXZ"; // prevents unwanted roll
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+    camera.rotation.z = 0; // force roll to 0
 
     renderer.render(scene, camera);
 }

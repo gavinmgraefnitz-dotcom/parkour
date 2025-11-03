@@ -12,22 +12,23 @@ document.body.appendChild(renderer.domElement);
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.y = 1.6;
 
-// --- Light ---
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+// --- Lights ---
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
 dirLight.position.set(10,20,10);
 scene.add(dirLight);
 
 // --- Physics ---
 const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-9.82,0) });
-const playerMaterial = new CANNON.Material("player");
-const groundMaterial = new CANNON.Material("ground");
-world.addContactMaterial(new CANNON.ContactMaterial(playerMaterial, groundMaterial, { friction:0, restitution:0 }));
+const playerMat = new CANNON.Material("player");
+const groundMat = new CANNON.Material("ground");
+world.addContactMaterial(new CANNON.ContactMaterial(playerMat, groundMat, { friction:0.0, restitution:0 }));
 
 // --- Ground ---
 const groundShape = new CANNON.Plane();
-const groundBody = new CANNON.Body({ mass:0, material:groundMaterial });
+const groundBody = new CANNON.Body({ mass:0, material:groundMat });
 groundBody.addShape(groundShape);
 groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
 world.addBody(groundBody);
@@ -39,16 +40,20 @@ const groundMesh = new THREE.Mesh(
 groundMesh.rotation.x = -Math.PI/2;
 scene.add(groundMesh);
 
-// --- Player ---
-const radius = 0.5;
-const playerBody = new CANNON.Body({
-  mass: 5,
-  material: playerMaterial,
-  position: new CANNON.Vec3(0,2,0),
-  shape: new CANNON.Sphere(radius),
-  linearDamping: 0.9
-});
-world.addBody(playerBody);
+// --- Player Capsule ---
+const radius = 0.3;
+const height = 1.2;
+const capsuleBody = new CANNON.Body({ mass:5, material:playerMat });
+const sphereShape = new CANNON.Sphere(radius);
+capsuleBody.addShape(sphereShape, new CANNON.Vec3(0, height/2, 0));
+capsuleBody.addShape(sphereShape, new CANNON.Vec3(0, -height/2, 0));
+const cylinderShape = new CANNON.Cylinder(radius, radius, height, 8);
+capsuleBody.addShape(cylinderShape, new CANNON.Vec3(0,0,0), new CANNON.Quaternion().setFromEuler(Math.PI/2,0,0));
+capsuleBody.position.set(0, 2, 0);
+capsuleBody.fixedRotation = true; // Prevent tipping
+capsuleBody.updateMassProperties();
+capsuleBody.linearDamping = 0.9;
+world.addBody(capsuleBody);
 
 // --- Input ---
 const keys = { w:false, a:false, s:false, d:false, space:false };
@@ -61,33 +66,33 @@ const sensitivity = 0.002;
 document.body.addEventListener("click", ()=>document.body.requestPointerLock());
 document.addEventListener("mousemove", e=>{
   if(document.pointerLockElement === document.body){
-    yaw -= e.movementX * sensitivity;
-    pitch -= e.movementY * sensitivity;
+    yaw -= e.movementX*sensitivity;
+    pitch -= e.movementY*sensitivity;
     pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01, pitch));
   }
 });
 
-// --- Ground detection ---
-function checkGround(){
-  const from = new CANNON.Vec3().copy(playerBody.position);
-  const to = new CANNON.Vec3(playerBody.position.x, playerBody.position.y - radius - 0.1, playerBody.position.z);
-  const ray = new CANNON.Ray(from, new CANNON.Vec3(0,-1,0));
+// --- Ground check ---
+function onGround() {
+  const start = new CANNON.Vec3().copy(capsuleBody.position);
+  const end = new CANNON.Vec3(capsuleBody.position.x, capsuleBody.position.y - height/2 - 0.1, capsuleBody.position.z);
   const result = new CANNON.RaycastResult();
+  const ray = new CANNON.Ray(start, new CANNON.Vec3(0,-1,0));
   ray.intersectWorld(world, { skipBackfaces:true }, result);
-  return result.hasHit && result.distance <= radius + 0.05;
+  return result.hasHit && result.distance <= height/2 + 0.05;
 }
 
 // --- Animate ---
 const clock = new THREE.Clock();
 function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(),0.05);
+  const dt = Math.min(clock.getDelta(), 0.05);
 
-  // --- Physics step ---
+  // Step physics
   world.step(1/60, dt, 3);
 
   // --- Movement ---
-  const moveSpeed = 5;
+  const speed = 4;
   const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
   const right = new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
   const moveDir = new THREE.Vector3();
@@ -97,21 +102,20 @@ function animate(){
   if(keys.d) moveDir.add(right);
   if(moveDir.lengthSq()>0) moveDir.normalize();
 
-  // Directly set velocity while preserving y (jump/fall)
-  playerBody.velocity.x = moveDir.x * moveSpeed;
-  playerBody.velocity.z = moveDir.z * moveSpeed;
+  capsuleBody.velocity.x = moveDir.x * speed;
+  capsuleBody.velocity.z = moveDir.z * speed;
 
   // Jump
-  if(keys.space && checkGround()){
-    playerBody.velocity.y = 6;
+  if(keys.space && onGround()){
+    capsuleBody.velocity.y = 5;
   }
 
   // --- Camera follows ---
-  camera.position.copy(playerBody.position);
-  camera.position.y += 1.6;
+  camera.position.copy(capsuleBody.position);
+  camera.position.y += 0.9 + height/2; // eye height
   camera.rotation.set(pitch, yaw, 0);
 
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
 }
 animate();
 

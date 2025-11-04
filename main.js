@@ -114,7 +114,7 @@ function checkLevelComplete() {
 
 // === Input ===
 const keys = { w: false, a: false, s: false, d: false, space: false };
-let jumpReady = true; // Only allow jump if touching ground
+let jumpPressedLastFrame = false; // track if space was held
 
 document.addEventListener("keydown", e => {
     if (e.code === "KeyW") keys.w = true;
@@ -156,9 +156,6 @@ function animate() {
 
     world.step(1/60, deltaTime, 3);
 
-    // Update jumpReady based on ground detection
-    jumpReady = isOnGround();
-
     // --- Movement ---
     const speed = 5;
     const inputDirection = new THREE.Vector3();
@@ -175,10 +172,11 @@ function animate() {
     playerBody.velocity.z = inputDirection.z * speed;
 
     // --- Jump ---
-    if (keys.space && jumpReady) {
+    const onGround = isOnGround();
+    if (keys.space && onGround && !jumpPressedLastFrame) {
         playerBody.velocity.y = 7;
-        jumpReady = false; // Lock until touching ground again
     }
+    jumpPressedLastFrame = keys.space;
 
     // --- Camera ---
     camera.position.copy(playerBody.position);

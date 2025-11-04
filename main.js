@@ -74,14 +74,12 @@ let currentLevel = 0;
 const platforms = [];
 
 function loadLevel(levelIndex) {
-    // Remove old platforms
     platforms.forEach(p => {
         scene.remove(p.mesh);
         world.removeBody(p.body);
     });
     platforms.length = 0;
 
-    // Load new level
     const levelData = levels[levelIndex];
     levelData.forEach(p => {
         const shape = new CANNON.Box(new CANNON.Vec3(p.w/2, p.h/2, p.d/2));
@@ -109,12 +107,10 @@ function loadLevel(levelIndex) {
 loadLevel(currentLevel);
 
 function checkLevelComplete() {
-    // Example: move to next level if player passes X = 20
     if (playerBody.position.x > 20 && currentLevel < levels.length - 1) {
         currentLevel++;
         loadLevel(currentLevel);
     }
-    // Reset if player falls
     if (playerBody.position.y < -10) {
         loadLevel(currentLevel);
     }
@@ -122,6 +118,8 @@ function checkLevelComplete() {
 
 // === Input ===
 const keys = { w: false, a: false, s: false, d: false, space: false };
+let canJump = true; // Jump lock to prevent infinite jump on hold
+
 document.addEventListener("keydown", e => {
     if (e.code === "KeyW") keys.w = true;
     if (e.code === "KeyA") keys.a = true;
@@ -135,6 +133,7 @@ document.addEventListener("keyup", e => {
     if (e.code === "KeyS") keys.s = false;
     if (e.code === "KeyD") keys.d = false;
     if (e.code === "Space") keys.space = false;
+    canJump = true; // Reset jump lock on release
 });
 
 // === Mouse Look ===
@@ -177,9 +176,12 @@ function animate() {
     playerBody.velocity.x = inputDirection.x * speed;
     playerBody.velocity.z = inputDirection.z * speed;
 
-    // --- Jump only when on ground ---
-    if (keys.space && isOnGround()) {
-        playerBody.velocity.y = 7;
+    // --- Jump with ground detection + jump lock ---
+    if (keys.space) {
+        if (isOnGround() && canJump) {
+            playerBody.velocity.y = 7;
+            canJump = false;
+        }
     }
 
     // --- Camera ---

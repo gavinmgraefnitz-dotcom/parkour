@@ -61,11 +61,7 @@ function isOnGround() {
     const ray = new CANNON.Ray(rayStart, rayEnd);
     const result = new CANNON.RaycastResult();
 
-    ray.intersectWorld(world, {
-        collisionFilterMask: -1,
-        skipBackfaces: true
-    }, result);
-
+    ray.intersectWorld(world, { collisionFilterMask: -1, skipBackfaces: true }, result);
     return result.hasHit && result.distance <= 0.6;
 }
 
@@ -118,7 +114,7 @@ function checkLevelComplete() {
 
 // === Input ===
 const keys = { w: false, a: false, s: false, d: false, space: false };
-let canJump = true; // Jump lock to prevent infinite jump on hold
+let jumpReady = true; // Only allow jump if touching ground
 
 document.addEventListener("keydown", e => {
     if (e.code === "KeyW") keys.w = true;
@@ -133,7 +129,6 @@ document.addEventListener("keyup", e => {
     if (e.code === "KeyS") keys.s = false;
     if (e.code === "KeyD") keys.d = false;
     if (e.code === "Space") keys.space = false;
-    canJump = true; // Reset jump lock on release
 });
 
 // === Mouse Look ===
@@ -161,6 +156,9 @@ function animate() {
 
     world.step(1/60, deltaTime, 3);
 
+    // Update jumpReady based on ground detection
+    jumpReady = isOnGround();
+
     // --- Movement ---
     const speed = 5;
     const inputDirection = new THREE.Vector3();
@@ -176,12 +174,10 @@ function animate() {
     playerBody.velocity.x = inputDirection.x * speed;
     playerBody.velocity.z = inputDirection.z * speed;
 
-    // --- Jump with ground detection + jump lock ---
-    if (keys.space) {
-        if (isOnGround() && canJump) {
-            playerBody.velocity.y = 7;
-            canJump = false;
-        }
+    // --- Jump ---
+    if (keys.space && jumpReady) {
+        playerBody.velocity.y = 7;
+        jumpReady = false; // Lock until touching ground again
     }
 
     // --- Camera ---

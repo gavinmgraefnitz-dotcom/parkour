@@ -113,29 +113,26 @@ function checkLevelComplete() {
 
 // === Input ===
 const keys = { w: false, a: false, s: false, d: false };
-let canJump = false;      // if player is on the ground
-let jumpLocked = false;   // prevents holding space
 
+// Movement keys
 document.addEventListener("keydown", e => {
     if (e.code === "KeyW") keys.w = true;
     if (e.code === "KeyA") keys.a = true;
     if (e.code === "KeyS") keys.s = true;
     if (e.code === "KeyD") keys.d = true;
-
-    // --- Jump handling ---
-    if (e.code === "Space" && canJump && !jumpLocked) {
-        playerBody.velocity.y = 7;
-        jumpLocked = true;
-    }
 });
-
 document.addEventListener("keyup", e => {
     if (e.code === "KeyW") keys.w = false;
     if (e.code === "KeyA") keys.a = false;
     if (e.code === "KeyS") keys.s = false;
     if (e.code === "KeyD") keys.d = false;
+});
 
-    if (e.code === "Space") jumpLocked = false;
+// === Jump with keypress ===
+document.addEventListener("keypress", e => {
+    if (e.code === "Space" && isOnGround()) {
+        playerBody.velocity.y = 7;
+    }
 });
 
 // === Mouse Look ===
@@ -162,8 +159,6 @@ function animate() {
     const deltaTime = Math.min(clock.getDelta(), 0.05);
 
     world.step(1/60, deltaTime, 3);
-
-    canJump = isOnGround();
 
     // --- Movement ---
     const speed = 5;

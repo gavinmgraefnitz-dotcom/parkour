@@ -60,7 +60,6 @@ function isOnGround() {
     const rayEnd = new CANNON.Vec3(playerBody.position.x, playerBody.position.y - 0.6, playerBody.position.z);
     const ray = new CANNON.Ray(rayStart, rayEnd);
     const result = new CANNON.RaycastResult();
-
     ray.intersectWorld(world, { collisionFilterMask: -1, skipBackfaces: true }, result);
     return result.hasHit && result.distance <= 0.6;
 }
@@ -113,22 +112,30 @@ function checkLevelComplete() {
 }
 
 // === Input ===
-const keys = { w: false, a: false, s: false, d: false, space: false };
-let jumpPressedLastFrame = false; // track if space was held
+const keys = { w: false, a: false, s: false, d: false };
+let canJump = false;      // if player is on the ground
+let jumpLocked = false;   // prevents holding space
 
 document.addEventListener("keydown", e => {
     if (e.code === "KeyW") keys.w = true;
     if (e.code === "KeyA") keys.a = true;
     if (e.code === "KeyS") keys.s = true;
     if (e.code === "KeyD") keys.d = true;
-    if (e.code === "Space") keys.space = true;
+
+    // --- Jump handling ---
+    if (e.code === "Space" && canJump && !jumpLocked) {
+        playerBody.velocity.y = 7;
+        jumpLocked = true;
+    }
 });
+
 document.addEventListener("keyup", e => {
     if (e.code === "KeyW") keys.w = false;
     if (e.code === "KeyA") keys.a = false;
     if (e.code === "KeyS") keys.s = false;
     if (e.code === "KeyD") keys.d = false;
-    if (e.code === "Space") keys.space = false;
+
+    if (e.code === "Space") jumpLocked = false;
 });
 
 // === Mouse Look ===
@@ -156,6 +163,8 @@ function animate() {
 
     world.step(1/60, deltaTime, 3);
 
+    canJump = isOnGround();
+
     // --- Movement ---
     const speed = 5;
     const inputDirection = new THREE.Vector3();
@@ -171,13 +180,6 @@ function animate() {
     playerBody.velocity.x = inputDirection.x * speed;
     playerBody.velocity.z = inputDirection.z * speed;
 
-    // --- Jump ---
-    const onGround = isOnGround();
-    if (keys.space && onGround && !jumpPressedLastFrame) {
-        playerBody.velocity.y = 7;
-    }
-    jumpPressedLastFrame = keys.space;
-
     // --- Camera ---
     camera.position.copy(playerBody.position);
     camera.position.y += 1.6;
@@ -186,9 +188,7 @@ function animate() {
     camera.rotation.x = pitch;
     camera.rotation.z = 0;
 
-    // --- Level & reset check ---
     checkLevelComplete();
-
     renderer.render(scene, camera);
 }
 
